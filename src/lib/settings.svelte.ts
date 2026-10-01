@@ -43,7 +43,7 @@ export interface Settings {
 }
 
 // bump when a stored shape can no longer be read; older stored settings are then dropped
-const VERSION = 2;
+const VERSION = 3;
 
 const reducedMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -71,7 +71,7 @@ export const DEFAULTS: Settings = {
   motion: reducedMotion ? 'fade' : 'slide',
   pivot: 0.42,
   trail: 'always',
-  trailPos: 'above',
+  trailPos: 'below',
   view: 'text',
   autoSkip: {
     contents: true,

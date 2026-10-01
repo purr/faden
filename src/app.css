@@ -64,7 +64,7 @@ textarea {
   color: inherit;
 }
 
-/* every control eases between states: hover, press, toggle, disable */
+/* every control eases between states by colour only: hover, press, toggle, disable */
 button,
 input,
 select,
@@ -73,9 +73,7 @@ textarea {
     background-color 0.2s var(--ease),
     color 0.2s var(--ease),
     border-color 0.2s var(--ease),
-    box-shadow 0.2s var(--ease),
-    opacity 0.2s var(--ease),
-    transform 0.18s var(--ease);
+    opacity 0.2s var(--ease);
 }
 
 button {
@@ -89,9 +87,9 @@ button:disabled {
   cursor: default;
 }
 
-/* a press shrinks the control a little, like a native button */
+/* a press dims the control a little, like a native ios button */
 button:active:not(:disabled) {
-  transform: scale(0.95);
+  opacity: 0.7;
 }
 
 :focus-visible {

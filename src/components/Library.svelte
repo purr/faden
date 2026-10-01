@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { flip } from 'svelte/animate';
-  import { fade, fly, slide } from 'svelte/transition';
+  import { fade } from 'svelte/transition';
   import Icon from './Icon.svelte';
   import { ease, t } from '../lib/motion';
   import { icons } from '../lib/icons';
@@ -118,14 +117,14 @@
   </header>
 
   {#if app.updateReady}
-    <div class="note" transition:slide={{ duration: t(260), easing: ease }}>
+    <div class="note" transition:fade={{ duration: t(200), easing: ease }}>
       <span>A new version of Faden is ready.</span>
       <button onclick={applyUpdate}>Reload</button>
     </div>
   {/if}
 
   {#if showInstall}
-    <div class="note install" transition:slide={{ duration: t(260), easing: ease }}>
+    <div class="note install" transition:fade={{ duration: t(200), easing: ease }}>
       <Icon svg={icons.share} />
       <p>
         To read offline, tap <b>Share</b> and choose <b>Add to Home Screen</b>, then open Faden from there. The Home Screen app keeps its
@@ -136,7 +135,7 @@
 
   {#if pasteOpen}
     <form
-      transition:slide={{ duration: t(280), easing: ease }}
+      transition:fade={{ duration: t(200), easing: ease }}
       class="paste"
       onsubmit={(e) => {
         e.preventDefault();
@@ -153,21 +152,21 @@
   {/if}
 
   {#if busy}
-    <div class="busy" role="status" transition:slide={{ duration: t(240), easing: ease }}>
+    <div class="busy" role="status" transition:fade={{ duration: t(200), easing: ease }}>
       <span>Reading “{busy.name}”</span>
       <span class="meter"><span style:transform="scaleX({busy.progress})"></span></span>
     </div>
   {/if}
 
   {#if error}
-    <p class="error" role="alert" transition:slide={{ duration: t(220), easing: ease }}>{error}</p>
+    <p class="error" role="alert" transition:fade={{ duration: t(200), easing: ease }}>{error}</p>
   {/if}
 
   {#if app.books.length}
     <ul class="books">
       {#each app.books as b (b.id)}
         {@const s = stats(b)}
-        <li animate:flip={{ duration: t(320), easing: ease }} in:fly={{ y: 14, duration: t(320), easing: ease }} out:slide={{ duration: t(260), easing: ease }}>
+        <li in:fade={{ duration: t(240), easing: ease }} out:fade={{ duration: t(160), easing: ease }}>
           <button class="open" onclick={() => (app.openId = b.id)}>
             <span class="title">{b.title}</span>
             {#if b.author}<span class="author">{b.author}</span>{/if}
@@ -407,15 +406,18 @@
     text-align: left;
   }
 
+  /* file-name titles have no spaces; without this they would overrun the delete button */
   .title {
     font-size: 19px;
     font-weight: 600;
     line-height: 1.3;
+    overflow-wrap: anywhere;
   }
 
   .author {
     font-size: 15px;
     color: var(--haze);
+    overflow-wrap: anywhere;
   }
 
   .thread {
@@ -483,25 +485,23 @@
 
   @media (hover: hover) {
     .primary:not(:disabled):hover {
-      box-shadow: 0 6px 22px rgb(0 0 0 / 0.22);
-      transform: translateY(-1px);
+      background: color-mix(in srgb, var(--paper) 88%, var(--ink));
     }
 
     .secondary:hover {
-      background: var(--raised);
+      background: color-mix(in srgb, var(--paper) 6%, transparent);
     }
 
     .open:hover .title {
-      color: var(--lamp);
+      color: color-mix(in srgb, var(--lamp) 60%, var(--paper));
     }
 
     .del:hover {
       color: var(--danger);
-      background: var(--raised);
     }
 
     .note button:hover {
-      filter: brightness(1.08);
+      background: color-mix(in srgb, var(--lamp) 88%, var(--paper));
     }
   }
 

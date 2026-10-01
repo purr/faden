@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { slide } from 'svelte/transition';
+  import { fade } from 'svelte/transition';
   import { autoSize, resetSettings, settings } from '../lib/settings.svelte';
   import { ease, t } from '../lib/motion';
 
@@ -51,7 +51,7 @@
     <span class="line"><span class="label">Words per minute</span><span class="value">{settings.wpm}</span></span>
     <input type="range" min="100" max="1000" step="10" bind:value={settings.wpm} />
     {#if settings.wpm > 350}
-      <span class="hint" transition:slide={{ duration: t(200), easing: ease }}>Above about 350 wpm most readers understand noticeably less.</span>
+      <span class="hint" transition:fade={{ duration: t(180), easing: ease }}>Above about 350 wpm most readers understand noticeably less.</span>
     {/if}
   </label>
   {@render toggle('Speed includes pauses', settings.honest, (v) => (settings.honest = v), 'The speed you set is the speed you read at; pauses take their time from the words around them.')}
@@ -78,7 +78,7 @@
     ['exact', 'Where I stopped'],
   ], (v) => (settings.resume = v))}
   {#if settings.resume === 'smart'}
-    <p class="hint" transition:slide={{ duration: t(220), easing: ease }}>Smart continues where you stopped after a quick glance away, a few words back after a short break, and from the start of the sentence after a long one.</p>
+    <p class="hint" transition:fade={{ duration: t(180), easing: ease }}>Smart continues where you stopped after a quick glance away, a few words back after a short break, and from the start of the sentence after a long one.</p>
   {/if}
 </section>
 
@@ -120,7 +120,7 @@
   <h3>The sentence around the word</h3>
   {@render toggle('Show the sentence', settings.context, (v) => (settings.context = v), 'Words already read sit faintly on the left, the next ones on the right.')}
   {#if settings.context}
-    <div transition:slide={{ duration: t(260), easing: ease }}>
+    <div transition:fade={{ duration: t(180), easing: ease }}>
     <label class="row col">
       <span class="line"><span class="label">Distance from the word</span><span class="value">{settings.contextGap.toFixed(1)}</span></span>
       <input type="range" min="1" max="8" step="0.5" bind:value={settings.contextGap} />
@@ -146,7 +146,7 @@
     ['off', 'Never'],
   ], (v) => (settings.trail = v))}
   {#if settings.trail !== 'off'}
-    <div transition:slide={{ duration: t(220), easing: ease }}>
+    <div transition:fade={{ duration: t(180), easing: ease }}>
       {@render choice('Place it', settings.trailPos, [
         ['above', 'Above the word'],
         ['below', 'Below the word'],
@@ -160,7 +160,7 @@
   <h3>Keyboard</h3>
   {@render toggle('Keyboard shortcuts', settings.keys, (v) => (settings.keys = v))}
   {#if settings.keys}
-    <dl class="keys" transition:slide={{ duration: t(240), easing: ease }}>
+    <dl class="keys" transition:fade={{ duration: t(180), easing: ease }}>
       <dt>Space</dt><dd>Read or pause</dd>
       <dt>← →</dt><dd>Sentence back or ahead</dd>
       <dt>Shift ← →</dt><dd>One word back or ahead</dd>
@@ -327,7 +327,7 @@
     }
 
     .reset:hover {
-      background: var(--raised);
+      background: color-mix(in srgb, var(--paper) 6%, transparent);
     }
   }
 </style>

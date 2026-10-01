@@ -16,8 +16,8 @@ after that the app starts, imports and reads in flight mode. the home screen app
 ## reading
 
 - tap the stage (or press space) to read or pause. swipe right for the previous sentence, left for the next. a swipe that starts at the left screen edge goes back to the library.
-- a panel above the word shows the chapter text with what you have read, unread text dimmed. tap any word there to continue from it. in the settings the panel can sit below the word, show only while paused, or stay hidden.
-- for pdfs the panel can show the printed page instead (the "page" tab): it follows your reading position, swipe or tap the arrows to turn pages, double-tap to zoom, and "read from here" continues at that page.
+- the word sits in a band at the top; below it a panel shows the chapter text with what you have read, unread text dimmed. tap any word there to continue from it. in the settings the panel can sit above the word, show only while paused, or stay hidden. a phone held sideways shows the word alone.
+- for pdfs the page button in the top bar switches the panel to the printed page: it follows your reading position, swipe or tap the arrows to turn pages, double-tap to zoom, and "read from here" continues at that page.
 - opening the contents or the settings pauses reading.
 - the contents button lists all sections. sections that look like a table of contents, index, glossary, references, copyright pages or notes are skipped automatically; switch any section or kind on or off there. for pdfs you can also skip page ranges ("1-12, 240-260"), and pages that look like a table of contents or index are suggested.
 - reading settings open as a panel beside or below the stage, so every change shows on the word right away. on a phone, drag a panel down to close it.
@@ -41,7 +41,7 @@ shortcuts can be switched off in the settings.
 | setting | default | reason |
 | --- | --- | --- |
 | speed | 300 wpm | comprehension holds up to ~300–350 wpm and drops above (di nocera 2018, kosch 2020) |
-| speed includes pauses | on | pauses and long words take their time from the words around them, but no word drops below 75% of its normal time; when that floor is reached the real pace is shown next to the speed ("291 real") |
+| speed includes pauses | on | pauses and long words take their time from the words around them, but no word drops below 75% of its normal time; when that floor is reached the real pace shows in the top line ("real pace 291 wpm") |
 | sentence pauses | +1 / +2.2 / +3.3 word slots by sentence length; commas +0.8; paragraphs +1.2 | pauses between sentences protect comprehension (masson 1983); lengths from the spritz patent |
 | long words | +10% per letter past 5 (up to 4×), strength 0–3 | long german compounds get time instead of being split; at 340 wpm "kolonialpolitischer" gets ~320 ms by default, ~690 ms at full strength |
 | short words together | on | "a house", "in der Stadt" show as one frame; the eye skips most short function words in normal reading |

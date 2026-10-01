@@ -48,15 +48,16 @@
 </script>
 
 {#if ready}
-  <!-- the reader slides in over the library, like a pushed screen on ios; going back reverses it -->
+  <!-- the reader slides in from the right over the library, like a pushed screen on ios, and slides
+       back out; both screens are opaque, so they never show through each other -->
   {#if app.openId}
     {#key app.openId}
-      <div class="screen" in:fly={{ x: 48, duration: t(360), easing: ease, opacity: 0 }} out:fly={{ x: 48, duration: t(260), easing: ease, opacity: 0 }}>
+      <div class="screen front" in:fly|global={{ x: 48, duration: t(320), easing: ease, opacity: 1 }} out:fly|global={{ x: 48, duration: t(240), easing: ease, opacity: 0 }}>
         <Reader bookId={app.openId} onexit={() => (app.openId = null)} />
       </div>
     {/key}
   {:else}
-    <div class="screen" in:fade={{ duration: t(260), delay: t(80) }} out:fade={{ duration: t(160) }}>
+    <div class="screen" in:fade={{ duration: t(200) }}>
       <Library />
     </div>
   {/if}
@@ -68,5 +69,11 @@
     inset: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    background: var(--ink);
+  }
+
+  /* the reader stays on top while it slides out over the returning library */
+  .front {
+    z-index: 1;
   }
 </style>

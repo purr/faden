@@ -275,7 +275,7 @@
 
   @media (hover: hover) {
     .chip:hover {
-      border-color: var(--lamp);
+      border-color: color-mix(in srgb, var(--lamp) 50%, var(--edge));
     }
 
     .suggest:hover {
@@ -283,7 +283,7 @@
     }
 
     .name:not(:disabled):hover .t {
-      color: var(--lamp);
+      color: color-mix(in srgb, var(--lamp) 60%, var(--paper));
     }
   }
 

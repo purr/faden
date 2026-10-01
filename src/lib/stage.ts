@@ -46,6 +46,11 @@ export class Stage {
   private spans: HTMLElement[] = [];
   private widths: number[] = [];
   private railKey = '';
+  // sentence-local range of the words currently shown as the reading word (-1: none yet)
+  private curA = -1;
+  private curB = -1;
+  // the rail was just rebuilt for a new sentence and has not been placed yet
+  private fresh = false;
   private secRef: Section | null = null;
   private secSerial = 0;
   private w = 0;
@@ -102,7 +107,10 @@ export class Stage {
     if (!this.last || !this.o) return;
     const { sec, fi, d, noFocus } = this.last;
     this.railKey = '';
+    // a resize or font load must not wipe a section title or "Finished" that is still showing
+    const carded = this.cardEl.classList.contains('show');
     this.render(sec, fi, d, noFocus, false);
+    if (carded) this.card(this.cardTitle.textContent ?? '', this.cardSub.textContent ?? '');
   }
 
   get pivotX() {
@@ -162,7 +170,7 @@ export class Stage {
     const sent = sec.words[f.w0].sent;
     const [s0, s1] = sec.sentences[sent];
     const key = `${this.secSerial}:${sent}`;
-    if (key !== this.railKey) this.buildRail(sec, s0, s1, key, rtl, animate);
+    if (key !== this.railKey) this.buildRail(sec, s0, s1, key, animate);
 
     const gap = o.contextGap * this.ch;
     // short and medium words leave the context in place; only long words push it outward
@@ -195,12 +203,22 @@ export class Stage {
     const aheadFar = edge;
     for (let k = f.w0; k <= f.w1; k++) xs[k - s0] = px - this.widths[k - s0] / 2;
 
+    const a = f.w0 - s0;
+    const b = f.w1 - s0;
     for (let i = 0; i < this.spans.length; i++) {
       const x = xs[i];
       const visible = x + this.widths[i] > 0 && x < this.w;
+      // a word joining or leaving the reading position only fades: sliding it would sweep a faint copy
+      // across the word being read
+      // a new sentence appears in place the same way
+      const crossing = this.fresh || (i >= a && i <= b ? !(i >= this.curA && i <= this.curB) : i >= this.curA && i <= this.curB);
+      this.spans[i].style.transition = crossing ? 'opacity var(--rail-ms) linear' : '';
       this.spans[i].style.transform = `translate3d(${x}px, -50%, 0)`;
       this.spans[i].style.opacity = visible ? String(Math.max(op[i], op[i] > 0 ? 0.06 : 0)) : '0';
     }
+    this.curA = a;
+    this.curB = b;
+    this.fresh = false;
     this.thread(this.threadBehind, f.w0 > s0, behindStart, behindFar, sp);
     this.thread(this.threadAhead, f.w1 < s1, aheadStart, aheadFar, sp);
   }
@@ -213,7 +231,7 @@ export class Stage {
     t.style.transform = `translate3d(${a}px, 0, 0) scaleX(${len})`;
   }
 
-  private buildRail(sec: Section, s0: number, s1: number, key: string, rtl: boolean, animate: boolean) {
+  private buildRail(sec: Section, s0: number, s1: number, key: string, animate: boolean) {
     const o = this.o!;
     for (const old of this.spans) {
       old.style.opacity = '0';
@@ -227,18 +245,17 @@ export class Stage {
       const span = document.createElement('span');
       span.textContent = sec.words[k].text;
       span.dir = 'auto';
-      span.style.transition = 'none';
       span.style.opacity = '0';
-      const width = this.ctx.measureText(sec.words[k].text).width;
-      // new sentences drift in from the reading direction
-      span.style.transform = `translate3d(${this.pivotX + (rtl ? -1 : 1) * (animate ? 40 : 0)}px, -50%, 0)`;
       this.spans.push(span);
-      this.widths.push(width);
+      this.widths.push(this.ctx.measureText(sec.words[k].text).width);
     }
     this.rail.append(...this.spans);
+    // commit the transparent start so the first layout fades the new sentence in
     if (animate) void this.rail.offsetWidth;
-    for (const span of this.spans) span.style.transition = '';
     this.railKey = key;
+    this.fresh = true;
+    this.curA = -1;
+    this.curB = -1;
   }
 
   // a beat of nothing before a word that repeats the one before it

@@ -34,6 +34,7 @@
   let error = $state('');
   let sheet = $state<'settings' | 'contents' | null>(null);
   let width = $state(window.innerWidth);
+  let height = $state(window.innerHeight);
   let session = $state({ ms: 0, words: 0 });
   let stageEl: HTMLElement;
   let stage: Stage | null = null;
@@ -53,13 +54,11 @@
   const isPdf = $derived(book?.kind === 'pdf');
   // the panel beside the stage shows the text, or for pdfs optionally the printed page
   const view = $derived(isPdf ? settings.view : 'text');
-  // on phones an open sheet leaves room only for the stage
-  const panelVisible = $derived(
-    !!sec &&
-      !carding &&
-      !(sheet && width < 900) &&
-      (settings.trail === 'always' || (settings.trail === 'pause' && !playing)),
-  );
+  // the word band and the panel area exist whenever the panel is in use, so showing or hiding the panel
+  // (pressing play in "when paused" mode, a section title card) never moves the word. on phones an open
+  // sheet leaves room only for the stage, and a phone held sideways is too short for both
+  const banded = $derived(!!sec && settings.trail !== 'off' && height >= 480 && !(sheet && width < 900));
+  const panelVisible = $derived(banded && (settings.trail === 'always' || !playing));
   // pdf page of the current word: the paragraph's first page, moved on by how far into the paragraph it is
   const readingPage = $derived.by(() => {
     if (!sec || !paras.length) return 1;
@@ -490,7 +489,10 @@
     const onVisibility = () => {
       if (document.hidden) pause();
     };
-    const onResize = () => (width = window.innerWidth);
+    const onResize = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+    };
     const onFonts = () => stage?.setOptions(stageOptions());
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('keydown', onKey);
@@ -543,6 +545,7 @@
   class:playing
   class:paused={!playing}
   class:sheet-open={sheet !== null}
+  class:banded
   class:panel-on={panelVisible}
   class:panel-above={settings.trailPos === 'above'}
 >
@@ -551,9 +554,22 @@
     <div class="where">
       <span class="title">{sectionTitle || book?.title || ''}</span>
       {#if sec}
-        <span class="sub">{formatDuration(chapterLeftMs)} left in this section</span>
+        <span class="sub">
+          {formatDuration(chapterLeftMs)} left{#if showReal}, real pace <span class="real" title="Real pace of this section with the current timing settings">{realWpm} wpm</span>{:else} in this section{/if}
+        </span>
       {/if}
     </div>
+    {#if isPdf && banded}
+      <button
+        class="icon-btn"
+        class:active={view === 'page'}
+        aria-pressed={view === 'page'}
+        onclick={() => (settings.view = view === 'page' ? 'text' : 'page')}
+        aria-label={view === 'page' ? 'Show the text' : 'Show the printed page'}
+      >
+        <Icon svg={icons.page} />
+      </button>
+    {/if}
     <button class="icon-btn" class:active={sheet === 'contents'} onclick={() => toggleSheet('contents')} aria-label="Contents and skipping">
       <Icon svg={icons.contents} />
     </button>
@@ -575,12 +591,6 @@
     {/if}
     {#if sec && book}
       <section class="panel" aria-label={view === 'page' ? 'Printed page' : 'Text you have read'} inert={!panelVisible}>
-        {#if isPdf}
-          <div class="tabs" role="tablist" aria-label="Panel">
-            <button role="tab" aria-selected={view === 'text'} class:on={view === 'text'} onclick={() => (settings.view = 'text')}>Text</button>
-            <button role="tab" aria-selected={view === 'page'} class:on={view === 'page'} onclick={() => (settings.view = 'page')}>Page</button>
-          </div>
-        {/if}
         <div class="panel-body">
           {#if view === 'page'}
             <PageView bookId={book.id} page={readingPage} visible={panelVisible} onread={readFromPage} />
@@ -592,7 +602,7 @@
               visible={panelVisible}
               note={sessionNote}
               onjump={jumpTo}
-              anchor={settings.trailPos === 'above' ? 0.62 : 0.3}
+              anchor={settings.trailPos === 'above' ? 0.7 : 0.22}
             />
           {/if}
         </div>
@@ -604,12 +614,11 @@
 
   <footer class="controls">
     <div class="speed">
-      <button class="icon-btn small" onclick={() => bump(-10)} aria-label="Slower"><Icon svg={icons.minus} /></button>
+      <button class="icon-btn" onclick={() => bump(-10)} aria-label="Slower"><Icon svg={icons.minus} /></button>
       <button class="wpm" onclick={() => toggleSheet('settings')} aria-label="Speed {settings.wpm} words per minute, open settings">
         <span class="num">{settings.wpm}</span><span class="unit">wpm</span>
-        {#if showReal}<span class="real" title="Real pace of this section with the current timing settings">{realWpm} real</span>{/if}
       </button>
-      <button class="icon-btn small" onclick={() => bump(10)} aria-label="Faster"><Icon svg={icons.plus} /></button>
+      <button class="icon-btn" onclick={() => bump(10)} aria-label="Faster"><Icon svg={icons.plus} /></button>
     </div>
     <div class="transport">
       <button class="icon-btn" onclick={prevSentence} aria-label="Back one sentence"><Icon svg={icons.back} /></button>
@@ -639,13 +648,14 @@
 </div>
 
 <style>
+  /* opaque, so the library never shows through while the two screens change places */
   .reader {
     position: fixed;
     inset: 0;
     display: flex;
     flex-direction: column;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-    transition: padding-right 0.32s var(--ease);
+    background: var(--ink);
   }
 
   .top {
@@ -666,11 +676,15 @@
     text-align: center;
   }
 
-  .title {
+  .title,
+  .sub {
     max-width: 100%;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  .title {
     font-size: 15px;
     font-weight: 600;
   }
@@ -681,6 +695,10 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .real {
+    color: var(--lamp);
+  }
+
   /* while reading, everything but the word steps back */
   .reader.playing .top,
   .reader.playing .controls .speed,
@@ -688,100 +706,79 @@
     opacity: 0.28;
   }
 
-  .reader.playing .top:hover,
-  .reader.playing .controls:hover .speed,
-  .reader.playing .controls:hover .extra,
-  .reader.playing .top:focus-within,
-  .reader.playing .controls:focus-within .speed,
-  .reader.playing .controls:focus-within .extra {
+  @media (hover: hover) {
+    .reader.playing .top:hover,
+    .reader.playing .controls:hover .speed,
+    .reader.playing .controls:hover .extra {
+      opacity: 1;
+    }
+  }
+
+  /* keyboard focus brings the controls back; a mouse click on play does not keep them lit */
+  .reader.playing .top:has(:focus-visible),
+  .reader.playing .controls:has(:focus-visible) .speed,
+  .reader.playing .controls:has(:focus-visible) .extra {
     opacity: 1;
   }
 
+  /* the word gets a band of its own and the panel (text or printed page) the rest: two areas one above
+     the other, so nothing is ever drawn over anything else */
   .main {
     position: relative;
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .stage-wrap {
-    position: absolute;
-    inset: 0;
-    transition: transform 0.45s var(--ease);
+    position: relative;
+    flex: 1;
+    min-height: 0;
     outline: none;
   }
 
-  /* the panel (text or printed page) takes one part of the screen; the stage moves to the other.
-     both move on the compositor, so showing and hiding the panel stays smooth */
+  /* the band is sized from the word: the word and its focus marks span 2.2em, plus 28px clear above and
+     below. --word-size is set on this element by the stage; 34px covers the moment before that */
+  .reader.banded .stage-wrap {
+    flex: none;
+    height: max(128px, calc(var(--word-size, 34px) * 2.2 + 56px));
+  }
+
   .panel {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 40%;
-    bottom: 0;
-    display: flex;
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: none;
     flex-direction: column;
+  }
+
+  /* the area stays while the panel is hidden ("when paused" mode while reading), so the word never moves */
+  .reader.banded .panel {
+    display: flex;
     opacity: 0;
-    transform: translateY(18px);
     pointer-events: none;
-    transition:
-      opacity 0.35s var(--ease),
-      transform 0.5s var(--ease);
+    transition: opacity 0.2s var(--ease);
+    border-top: 1px solid var(--edge);
   }
 
-  .reader.panel-above .panel {
-    top: 0;
-    bottom: 42%;
-    transform: translateY(-18px);
+  .reader.banded.panel-above .panel {
+    order: -1;
+    border-top: 0;
+    border-bottom: 1px solid var(--edge);
   }
 
-  .reader.panel-on .panel {
+  .reader.banded.panel-on .panel {
     opacity: 1;
-    transform: none;
     pointer-events: auto;
   }
 
-  .reader.panel-on .stage-wrap {
-    transform: translateY(-30%);
-  }
-
-  .reader.panel-on.panel-above .stage-wrap {
-    transform: translateY(29%);
-  }
-
+  /* nothing inside the panel can paint outside it, whatever its content measures */
   .panel-body {
     position: relative;
     flex: 1;
     min-height: 0;
-  }
-
-  .tabs {
-    align-self: center;
-    display: flex;
-    gap: 2px;
-    margin: 6px 0 2px;
-    padding: 3px;
-    border-radius: 999px;
-    background: var(--raised);
-  }
-
-  .reader.panel-above .tabs {
-    order: 1;
-    margin: 2px 0 6px;
-  }
-
-  .tabs button {
-    padding: 5px 14px;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    font-size: 13px;
-    color: var(--haze);
-  }
-
-  .tabs button.on {
-    background: var(--ink);
-    color: var(--paper);
-    box-shadow: 0 0 0 1px var(--edge);
+    overflow: hidden;
   }
 
   .error {
@@ -812,7 +809,8 @@
 
   .controls {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-areas: 'speed transport extra';
     align-items: center;
     gap: 8px;
     padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
@@ -826,12 +824,18 @@
     transition: opacity 0.4s var(--ease);
   }
 
+  .speed {
+    grid-area: speed;
+  }
+
   .extra {
+    grid-area: extra;
     justify-content: flex-end;
     gap: 8px;
   }
 
   .transport {
+    grid-area: transport;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -848,33 +852,20 @@
     color: var(--paper);
   }
 
-  .icon-btn.small {
-    width: 36px;
-    height: 36px;
-  }
-
   .icon-btn.active {
     background: var(--raised);
   }
 
+  /* hover only tints, it never moves or glows */
   @media (hover: hover) {
     .icon-btn:hover,
     .wpm:hover {
-      background: var(--raised);
+      background: color-mix(in srgb, var(--paper) 7%, transparent);
     }
 
     .play:hover {
-      box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
-      transform: scale(1.04);
+      background: color-mix(in srgb, var(--paper) 86%, var(--ink));
     }
-
-    .tabs button:not(.on):hover {
-      color: var(--paper);
-    }
-  }
-
-  .wpm {
-    border-radius: 10px;
   }
 
   .play {
@@ -887,47 +878,34 @@
     border-radius: 50%;
     background: var(--paper);
     color: var(--ink);
-    box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
   }
 
-  /* play and pause cross-fade and turn instead of swapping */
+  /* play and pause cross-fade */
   .glyph {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
-    transition:
-      opacity 0.22s var(--ease),
-      transform 0.32s var(--ease);
+    transition: opacity 0.2s var(--ease);
   }
 
   .pause-glyph,
   .play.on .play-glyph {
     opacity: 0;
-    transform: scale(0.6) rotate(-90deg);
   }
 
   .play.on .pause-glyph {
     opacity: 1;
-    transform: none;
-  }
-
-  .real {
-    margin-left: 2px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: var(--lamp-soft);
-    color: var(--lamp);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
   }
 
   .wpm {
     display: flex;
     align-items: baseline;
     gap: 4px;
-    padding: 6px 4px;
+    min-height: 44px;
+    padding: 6px 6px;
     border: 0;
+    border-radius: 10px;
     background: transparent;
   }
 
@@ -948,16 +926,19 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* phones: a sheet covers the lower half, the stage shrinks into the space above it */
-  @media (max-width: 899px) {
-    .reader.sheet-open .main {
-      flex: none;
-      height: calc(42dvh - 56px - env(safe-area-inset-top));
+  /* phones: centring the play button would leave ~90px per side, too little for the speed controls,
+     so the speed and settings take a row above the play controls */
+  @media (max-width: 599px) {
+    .controls {
+      grid-template-columns: 1fr auto;
+      grid-template-areas:
+        'speed extra'
+        'transport transport';
+      row-gap: 4px;
     }
 
-    .reader.sheet-open .stage-wrap,
-    .reader.sheet-open.panel-above .stage-wrap {
-      transform: none;
+    .transport {
+      justify-self: center;
     }
 
     .booktime {
@@ -965,9 +946,33 @@
     }
   }
 
+  /* phones: a sheet covers the lower 58% of the screen. .main's percentage is of the reader's content
+     box, which excludes the top safe area, while the sheet's top: 42% is of the whole screen; using
+     (100% + inset) for the full height makes .main end exactly where the sheet begins (keep both 42% in
+     step). the progress line and controls would sit under the sheet's edge, so they leave meanwhile */
+  @media (max-width: 899px) {
+    .reader.sheet-open .main {
+      flex: none;
+      height: calc(0.42 * (100% + env(safe-area-inset-top)) - 56px - env(safe-area-inset-top));
+    }
+
+    .reader.sheet-open .progress,
+    .reader.sheet-open .controls {
+      display: none;
+    }
+  }
+
+  /* wide screens: the side panel's room is reserved in one step, never animated (an animated width
+     re-wrapped the text every frame, so lines hopped up and down); on close the room is kept until the
+     panel has slid out, 0.32s as in Sheet.svelte */
   @media (min-width: 900px) {
+    .reader {
+      transition: padding-right 0s linear 0.32s;
+    }
+
     .reader.sheet-open {
       padding-right: 400px;
+      transition: none;
     }
 
     .controls {

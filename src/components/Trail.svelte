@@ -25,6 +25,10 @@
   const highlights = typeof CSS !== 'undefined' && 'highlights' in CSS;
   let wasVisible = false;
   let lastPara: Element | null = null;
+  // the panel's size: a rotation or resize re-wraps the text, so the current word is placed again
+  let boxW = $state(0);
+  let boxH = $state(0);
+  let lastSize = '';
 
   // a paragraph as plain and emphasised runs; their text adds up to exactly `p.t`
   function runs(p: Para): { t: string; k: number }[] {
@@ -66,6 +70,11 @@
       }
       return;
     }
+    const size = `${boxW}x${boxH}`;
+    if (size !== lastSize) {
+      lastSize = size;
+      wasVisible = false;
+    }
     const f = sec.frames[fi];
     if (!f) return;
     const a = sec.words[f.w0];
@@ -93,8 +102,11 @@
     }
     const r = cur.getBoundingClientRect();
     const v = box.getBoundingClientRect();
-    if (!wasVisible || r.top < v.top + 48 || r.bottom > v.bottom - 48) {
-      box.scrollTo({ top: box.scrollTop + r.top - v.top - v.height * anchor, behavior: wasVisible ? 'smooth' : 'auto' });
+    // re-place the word when it nears an edge; the margin shrinks on short panels so it stays reachable
+    const edge = Math.min(48, v.height * 0.15);
+    if (!wasVisible || r.top < v.top + edge || r.bottom > v.bottom - edge) {
+      // an instant jump: the text never glides up or down while the word is being read
+      box.scrollTo({ top: box.scrollTop + r.top - v.top - v.height * anchor, behavior: 'auto' });
     }
     wasVisible = true;
   });
@@ -136,7 +148,9 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="trail" bind:this={box} onclick={tap} aria-hidden={!visible} inert={!visible}>
+<div class="trail" bind:this={box} bind:clientWidth={boxW} bind:clientHeight={boxH} onclick={tap} aria-hidden={!visible} inert={!visible}>
+  <!-- spacers sized from the panel's height let the first and last lines reach the reading anchor -->
+  <div class="pad" style:height="{anchor * 100}%" aria-hidden="true"></div>
   {#if note}<p class="note">{note}</p>{/if}
   <p class="hint">Tap a word to read on from there.</p>
   {#each paras as p, i (i)}
@@ -146,6 +160,7 @@
       <p data-p={i}>{#each runs(p) as r}{#if r.k}<span class:i={r.k & 1} class:b={r.k & 2}>{r.t}</span>{:else}{r.t}{/if}{/each}</p>
     {/if}
   {/each}
+  <div class="pad" style:height="{(1 - anchor) * 100}%" aria-hidden="true"></div>
 </div>
 
 <style>
@@ -156,10 +171,13 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 40% max(20px, calc((100% - 38rem) / 2));
+    /* only horizontal padding: percentage padding resolves against the width, and vertical padding
+       wider than the panel is tall pushed the text out over the word and the controls */
+    padding: 0 max(20px, calc((100% - 38rem) / 2));
     font-size: 17px;
     line-height: 1.6;
-    mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+    /* the edge fades shrink on short panels, so a readable band always stays in the middle */
+    mask-image: linear-gradient(to bottom, transparent, #000 min(32px, 12%), #000 calc(100% - min(32px, 12%)), transparent);
   }
 
   p,

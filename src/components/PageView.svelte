@@ -96,11 +96,12 @@
     <button class="nav" onclick={() => go(-1)} disabled={shown <= 1} aria-label="Previous page"><Icon svg={icons.library} /></button>
     <span class="where">Page {shown}{total ? ` of ${total}` : ''}</span>
     <button class="nav flip" onclick={() => go(1)} disabled={!!total && shown >= total} aria-label="Next page"><Icon svg={icons.library} /></button>
-    <span class="grow"></span>
-    {#if !follow}
-      <button class="pill" onclick={() => (follow = true)}>Back to reading</button>
-    {/if}
-    <button class="pill strong" onclick={() => onread(shown)}>Read from here</button>
+    <span class="actions">
+      {#if !follow}
+        <button class="pill" onclick={() => (follow = true)}>Back to reading</button>
+      {/if}
+      <button class="pill strong" onclick={() => onread(shown)}>Read from here</button>
+    </span>
   </div>
   {#if error}
     <p class="error">{error}</p>
@@ -119,21 +120,26 @@
     flex-direction: column;
   }
 
+  /* on a narrow phone the buttons move to a second row instead of squeezing the labels */
   .bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    padding: 8px 12px;
+    padding: 6px 12px;
   }
 
   .where {
     font-size: 13px;
     color: var(--haze);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
-  .grow {
-    flex: 1;
+  .actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
   }
 
   .nav {
@@ -155,6 +161,7 @@
   }
 
   .pill {
+    white-space: nowrap;
     padding: 7px 12px;
     border: 1px solid var(--edge);
     border-radius: 999px;
@@ -172,7 +179,7 @@
     overflow: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 4px 12px 24px;
+    padding: 4px 12px 12px;
     text-align: center;
     touch-action: pan-x pan-y;
   }
@@ -198,7 +205,7 @@
   @media (hover: hover) {
     .nav:not(:disabled):hover,
     .pill:hover {
-      background: var(--raised);
+      background: color-mix(in srgb, var(--paper) 7%, transparent);
     }
   }
 </style>

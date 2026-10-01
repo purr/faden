@@ -25,24 +25,23 @@
     }
   }
 
-  // drag the grabber or header down to close, as on ios; dragging up only stretches a little
+  // drag the grabber or header down to close, as on ios
   const CLOSE_DISTANCE = 110;
   const CLOSE_VELOCITY = 0.5; // px per ms
   let drag = $state(0);
-  let dragging = $state(false);
   let from: { y: number; t: number } | null = null;
 
   function dragStart(e: PointerEvent) {
     if (e.button !== 0 || window.innerWidth >= 900 || (e.target as Element).closest('button')) return;
     from = { y: e.clientY, t: performance.now() };
-    dragging = true;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   }
 
   function dragMove(e: PointerEvent) {
     if (!from) return;
     const dy = e.clientY - from.y;
-    drag = dy > 0 ? dy : dy / 5;
+    // no upward stretch: the sheet is pinned to the bottom, so moving it up would open a gap below it
+    drag = Math.max(0, dy);
   }
 
   function dragEnd(e: PointerEvent) {
@@ -50,9 +49,11 @@
     const dy = e.clientY - from.y;
     const dt = Math.max(1, performance.now() - from.t);
     from = null;
-    dragging = false;
-    if (dy > CLOSE_DISTANCE || (dy > 20 && dy / dt > CLOSE_VELOCITY)) onclose();
-    drag = 0;
+    if (e.type !== 'pointercancel' && (dy > CLOSE_DISTANCE || (dy > 20 && dy / dt > CLOSE_VELOCITY))) {
+      // the sheet fades out where the finger left it, then resets for the next opening
+      onclose();
+      setTimeout(() => (drag = 0), 220);
+    } else drag = 0;
   }
 </script>
 
@@ -60,7 +61,6 @@
 <div
   class="sheet"
   class:open
-  class:dragging
   role="dialog"
   aria-modal="false"
   aria-label={title}
@@ -68,7 +68,7 @@
   bind:this={panel}
   onkeydown={key}
   inert={!open}
-  style:transform={open && drag ? `translateY(${drag}px)` : undefined}
+  style:transform={drag ? `translateY(${drag}px)` : undefined}
 >
   <!-- the close button is the keyboard and screen-reader way to dismiss; dragging is a touch shortcut -->
   <header role="presentation" onpointerdown={dragStart} onpointermove={dragMove} onpointerup={dragEnd} onpointercancel={dragEnd}>
@@ -80,30 +80,33 @@
 </div>
 
 <style>
+  /* phones: the sheet fills the lower 58% (in % of the screen, not dvh, which is unreliable in ios
+     home screen apps) and fades in and out rather than sliding up */
   .sheet {
     position: fixed;
     left: 0;
     right: 0;
+    top: 42%;
     bottom: 0;
     z-index: 20;
     display: flex;
     flex-direction: column;
-    height: var(--sheet-h, 58dvh);
     background: var(--surface);
     border-top: 1px solid var(--edge);
     border-radius: 18px 18px 0 0;
     box-shadow: 0 -12px 40px rgb(0 0 0 / 0.25);
-    transform: translateY(105%);
-    transition: transform 0.32s var(--ease);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.2s var(--ease),
+      visibility 0s linear 0.2s;
     outline: none;
   }
 
   .sheet.open {
-    transform: none;
-  }
-
-  .sheet.dragging {
-    transition: none;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s var(--ease);
   }
 
   header {
@@ -111,7 +114,8 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 20px 12px 6px 20px;
+    /* the phone sheet runs edge to edge, so in landscape it keeps clear of the notch */
+    padding: 20px max(12px, env(safe-area-inset-right)) 6px max(20px, env(safe-area-inset-left));
     touch-action: none;
     cursor: grab;
   }
@@ -136,6 +140,12 @@
     .grab {
       display: none;
     }
+
+    /* the side panel's left edge is mid-screen, away from any notch */
+    header,
+    .body {
+      padding-left: 20px;
+    }
   }
 
   h2 {
@@ -159,26 +169,35 @@
     flex: 1;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 4px 20px calc(24px + env(safe-area-inset-bottom));
+    padding: 4px max(20px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   }
 
   /* wide screens: a side panel, so the stage keeps its full height */
+  /* wide screens: a side panel that slides in from the right */
   @media (min-width: 900px) {
     .sheet {
       left: auto;
       top: 0;
       width: 400px;
-      height: auto;
       border-top: 0;
       border-left: 1px solid var(--edge);
       border-radius: 0;
+      opacity: 1;
       transform: translateX(105%);
+      transition:
+        transform 0.32s var(--ease),
+        visibility 0s linear 0.32s;
+    }
+
+    .sheet.open {
+      transform: none;
+      transition: transform 0.32s var(--ease);
     }
   }
 
   @media (hover: hover) {
     .close:hover {
-      background: var(--edge);
+      background: color-mix(in srgb, var(--paper) 10%, var(--raised));
     }
   }
 </style>
