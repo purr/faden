@@ -1,0 +1,267 @@
+/* night: deep ink, warm paper text, lamp-amber focus. amber stays ≥ 8.8:1 against the ink in every
+   colour-vision simulation (machado 2009); day uses a darker amber that keeps ≥ 5.2:1 */
+:root {
+  --ink: #0f141b;
+  --paper: #e8e6e1;
+  --lamp: #ffb000;
+  --haze: #7d8592;
+  --line: #5b6676;
+  --surface: #151c25;
+  --raised: #1c2531;
+  --edge: #27313e;
+  --lamp-soft: rgb(255 176 0 / 0.16);
+  --danger: #ff8a7a;
+  --ui: 'Atkinson Hyperlegible Next', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --radius: 14px;
+  color-scheme: dark;
+}
+
+:root[data-theme='day'] {
+  --ink: #f6f7f9;
+  --paper: #161a21;
+  --lamp: #8f5500;
+  --haze: #6a727e;
+  --line: #7f8896;
+  --surface: #ffffff;
+  --raised: #eceff3;
+  --edge: #dbe0e6;
+  --lamp-soft: rgb(143 85 0 / 0.13);
+  --danger: #b3261e;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--ui);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+#app {
+  height: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--lamp);
+  outline-offset: 2px;
+}
+
+.icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
+.icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- stage ---------- */
+
+.stage {
+  position: relative;
+  overflow: hidden;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+}
+
+.stage .word {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform-origin: 0 50%;
+  white-space: pre;
+  line-height: 1;
+  font-family: var(--word-font);
+  font-size: var(--word-size);
+  font-weight: var(--word-weight);
+  color: var(--paper);
+  will-change: transform;
+}
+
+.stage .word.em-i {
+  font-style: italic;
+}
+
+.stage .word.em-b {
+  font-weight: 700;
+}
+
+.stage .orp {
+  color: var(--lamp);
+}
+
+.stage.focus-bold .orp {
+  color: inherit;
+  font-weight: 700;
+}
+
+.stage.focus-off .orp,
+.stage .word.nofocus .orp {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.stage .tick {
+  position: absolute;
+  left: 0;
+  width: 2px;
+  height: calc(var(--word-size) * 0.32);
+  border-radius: 1px;
+  background: var(--line);
+  transition: opacity 0.3s var(--ease);
+}
+
+.stage .tick.top {
+  top: calc(50% - var(--word-size) * 1.1);
+}
+
+.stage .tick.bottom {
+  top: calc(50% + var(--word-size) * 0.78);
+}
+
+.stage.reticle-off .tick {
+  display: none;
+}
+
+/* context words share the reading word's baseline */
+.stage .rail {
+  position: absolute;
+  left: 0;
+  top: calc(50% + var(--word-size) * 0.3 - var(--ctx-size) * 0.3);
+  height: 0;
+}
+
+.stage .rail span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: pre;
+  line-height: 1;
+  font-family: var(--ctx-font);
+  font-size: var(--ctx-size);
+  color: var(--paper);
+  transition:
+    transform var(--rail-ms) var(--ease),
+    opacity var(--rail-ms) linear;
+  will-change: transform, opacity;
+}
+
+.stage.motion-fade .rail span,
+.stage.motion-fade .thread {
+  transition: opacity var(--rail-ms) linear;
+}
+
+.stage .thread {
+  position: absolute;
+  left: 0;
+  top: calc(50% + var(--word-size) * 0.3 + var(--ctx-size) * 0.32);
+  width: 1px;
+  height: 1px;
+  transform-origin: 0 0;
+  transform: scaleX(0);
+  background: var(--line);
+  opacity: 0.4;
+  transition: transform var(--rail-ms) var(--ease);
+}
+
+.stage.context-off .rail,
+.stage.context-off .thread {
+  display: none;
+}
+
+.stage .card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 0 28px;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease);
+}
+
+.stage .card.show {
+  opacity: 1;
+}
+
+.stage .card-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.stage .card-sub {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--haze);
+}
+
+.stage.carding .tick {
+  opacity: 0.25;
+}
+
+/* ---------- read-text view highlights (css custom highlight api) ---------- */
+
+::highlight(faden-unread) {
+  color: var(--haze);
+}
+
+::highlight(faden-current) {
+  background-color: var(--lamp-soft);
+  color: var(--paper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
