@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { flip } from 'svelte/animate';
+  import { fade, fly, slide } from 'svelte/transition';
   import Icon from './Icon.svelte';
+  import { ease, t } from '../lib/motion';
   import { icons } from '../lib/icons';
   import { app, applyUpdate, isIOS, isStandalone, refreshBooks, refreshStorage } from '../lib/app.svelte';
   import { deleteBook, storeBook } from '../lib/db';
@@ -115,14 +118,14 @@
   </header>
 
   {#if app.updateReady}
-    <div class="note">
+    <div class="note" transition:slide={{ duration: t(260), easing: ease }}>
       <span>A new version of Faden is ready.</span>
       <button onclick={applyUpdate}>Reload</button>
     </div>
   {/if}
 
   {#if showInstall}
-    <div class="note install">
+    <div class="note install" transition:slide={{ duration: t(260), easing: ease }}>
       <Icon svg={icons.share} />
       <p>
         To read offline, tap <b>Share</b> and choose <b>Add to Home Screen</b>, then open Faden from there. The Home Screen app keeps its
@@ -133,6 +136,7 @@
 
   {#if pasteOpen}
     <form
+      transition:slide={{ duration: t(280), easing: ease }}
       class="paste"
       onsubmit={(e) => {
         e.preventDefault();
@@ -149,21 +153,21 @@
   {/if}
 
   {#if busy}
-    <div class="busy" role="status">
+    <div class="busy" role="status" transition:slide={{ duration: t(240), easing: ease }}>
       <span>Reading “{busy.name}”</span>
       <span class="meter"><span style:transform="scaleX({busy.progress})"></span></span>
     </div>
   {/if}
 
   {#if error}
-    <p class="error" role="alert">{error}</p>
+    <p class="error" role="alert" transition:slide={{ duration: t(220), easing: ease }}>{error}</p>
   {/if}
 
   {#if app.books.length}
     <ul class="books">
       {#each app.books as b (b.id)}
         {@const s = stats(b)}
-        <li>
+        <li animate:flip={{ duration: t(320), easing: ease }} in:fly={{ y: 14, duration: t(320), easing: ease }} out:slide={{ duration: t(260), easing: ease }}>
           <button class="open" onclick={() => (app.openId = b.id)}>
             <span class="title">{b.title}</span>
             {#if b.author}<span class="author">{b.author}</span>{/if}
@@ -174,7 +178,7 @@
             </span>
           </button>
           {#if confirmDelete === b.id}
-            <div class="confirm">
+            <div class="confirm" in:fade={{ duration: t(160) }}>
               <button class="danger" onclick={() => remove(b)}>Delete</button>
               <button class="secondary" onclick={() => (confirmDelete = null)}>Keep</button>
             </div>
@@ -185,7 +189,7 @@
       {/each}
     </ul>
   {:else if !busy}
-    <div class="empty">
+    <div class="empty" in:fade={{ duration: t(240) }}>
       <p>Your library is empty. Import a PDF or EPUB, or paste some text to start reading.</p>
     </div>
   {/if}
@@ -475,5 +479,33 @@
     margin-top: 40px;
     font-size: 13px;
     color: var(--haze);
+  }
+
+  @media (hover: hover) {
+    .primary:not(:disabled):hover {
+      box-shadow: 0 6px 22px rgb(0 0 0 / 0.22);
+      transform: translateY(-1px);
+    }
+
+    .secondary:hover {
+      background: var(--raised);
+    }
+
+    .open:hover .title {
+      color: var(--lamp);
+    }
+
+    .del:hover {
+      color: var(--danger);
+      background: var(--raised);
+    }
+
+    .note button:hover {
+      filter: brightness(1.08);
+    }
+  }
+
+  .title {
+    transition: color 0.2s var(--ease);
   }
 </style>

@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import Sheet from './Sheet.svelte';
   import Trail from './Trail.svelte';
+  import PageView from './PageView.svelte';
   import SettingsPanel from './SettingsPanel.svelte';
   import ContentsPanel from './ContentsPanel.svelte';
   import { icons } from '../lib/icons';
@@ -49,13 +50,26 @@
   });
 
   const noFocus = $derived(book ? baseLang(book.lang) === 'ja' : false);
+  const isPdf = $derived(book?.kind === 'pdf');
+  // the panel beside the stage shows the text, or for pdfs optionally the printed page
+  const view = $derived(isPdf ? settings.view : 'text');
   // on phones an open sheet leaves room only for the stage
-  const trailVisible = $derived(
+  const panelVisible = $derived(
     !!sec &&
       !carding &&
       !(sheet && width < 900) &&
       (settings.trail === 'always' || (settings.trail === 'pause' && !playing)),
   );
+  // pdf page of the current word: the paragraph's first page, moved on by how far into the paragraph it is
+  const readingPage = $derived.by(() => {
+    if (!sec || !paras.length) return 1;
+    const w = sec.words[sec.frames[fi]?.w0 ?? 0];
+    if (!w) return 1;
+    const start = paras[w.p].pg ?? 1;
+    const next = paras.slice(w.p + 1).find((p) => p.pg)?.pg ?? start;
+    if (next <= start) return start;
+    return Math.min(next, start + Math.floor((w.s / Math.max(1, paras[w.p].t.length)) * (next - start + 1)));
+  });
   const cum = $derived.by(() => {
     const c = new Float64Array(dur.length + 1);
     for (let i = 0; i < dur.length; i++) c[i + 1] = c[i] + dur[i];
@@ -76,8 +90,8 @@
   const bookLeftMs = $derived.by(() => {
     if (!book || !sec) return 0;
     const base = 60000 / settings.wpm;
-    // without "speed includes pauses" every section runs slower than nominal by the current section's ratio
-    const ratio = settings.honest || !secSrc ? 1 : cum[dur.length] / (secSrc * base);
+    // later sections are assumed to run at the current section's real pace
+    const ratio = secSrc ? cum[dur.length] / (secSrc * base) : 1;
     let rest = 0;
     book.sections.forEach((m, k) => {
       if (k > sIdx) rest += sectionWords(m);
@@ -96,6 +110,10 @@
     const here = sectionWords(book.sections[sIdx]) * (fi / sec.frames.length);
     return total ? Math.min(1, (before + here) / total) : 0;
   });
+  // the pace this section really runs at; differs from the slider when pauses and long words can't all
+  // be paid for by the other words (or with "speed includes pauses" off)
+  const realWpm = $derived(secSrc && dur.length ? Math.round((secSrc * 60000) / cum[dur.length]) : settings.wpm);
+  const showReal = $derived(Math.abs(realWpm - settings.wpm) >= settings.wpm * 0.03);
   const sectionTitle = $derived(book?.sections[sIdx]?.title ?? '');
   const readable = $derived(book ? book.sections.filter((m) => !m.skip).length : 0);
   const sessionNote = $derived.by(() => {
@@ -124,7 +142,7 @@
       contextScale: settings.contextScale,
       motion: settings.motion,
       pivot: settings.pivot,
-      ctxFont: FONT_STACKS.sans,
+      ctxFont: FONT_STACKS[settings.font],
     };
   }
 
@@ -386,11 +404,25 @@
     onexit();
   }
 
+  // opening a panel pauses reading: nobody reads the word while looking at a list
   function toggleSheet(which: 'settings' | 'contents') {
+    if (sheet !== which) pause();
     sheet = sheet === which ? null : which;
   }
 
-  // tap the stage to read or pause; swipe right to go back a sentence, left to go ahead
+  // "read from here" on a pdf page: find the section holding that page, then its first paragraph there
+  async function readFromPage(page: number) {
+    if (!book) return;
+    pause();
+    const s = book.sections.findIndex((m) => !m.skip && m.pages && m.pages[0] <= page && page <= m.pages[1]);
+    if (s < 0) return;
+    if (s !== sIdx) await loadAt(s, 0, false);
+    const p = paras.findIndex((x) => (x.pg ?? 0) >= page);
+    if (p >= 0) jumpTo(p, 0);
+  }
+
+  // tap the stage to read or pause; swipe right to go back a sentence, left to go ahead; a swipe that
+  // starts at the left screen edge goes back to the library, like the ios back gesture
   let down: { x: number; y: number } | null = null;
   function pointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
@@ -400,9 +432,11 @@
     if (!down) return;
     const dx = e.clientX - down.x;
     const dy = e.clientY - down.y;
+    const fromEdge = down.x < 24;
     down = null;
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      if (dx > 0) prevSentence();
+      if (fromEdge && dx > 80) void exit();
+      else if (dx > 0) prevSentence();
       else nextSentence();
     } else if (Math.abs(dx) < 12 && Math.abs(dy) < 12) toggle();
   }
@@ -504,7 +538,14 @@
   });
 </script>
 
-<div class="reader" class:playing class:paused={!playing} class:sheet-open={sheet !== null} class:trail-on={trailVisible}>
+<div
+  class="reader"
+  class:playing
+  class:paused={!playing}
+  class:sheet-open={sheet !== null}
+  class:panel-on={panelVisible}
+  class:panel-above={settings.trailPos === 'above'}
+>
   <header class="top">
     <button class="icon-btn" onclick={exit} aria-label="Back to library"><Icon svg={icons.library} /></button>
     <div class="where">
@@ -532,8 +573,30 @@
     {#if error}
       <p class="error" role="alert">{error}</p>
     {/if}
-    {#if sec}
-      <Trail {paras} {sec} {fi} visible={trailVisible} note={sessionNote} onjump={jumpTo} />
+    {#if sec && book}
+      <section class="panel" aria-label={view === 'page' ? 'Printed page' : 'Text you have read'} inert={!panelVisible}>
+        {#if isPdf}
+          <div class="tabs" role="tablist" aria-label="Panel">
+            <button role="tab" aria-selected={view === 'text'} class:on={view === 'text'} onclick={() => (settings.view = 'text')}>Text</button>
+            <button role="tab" aria-selected={view === 'page'} class:on={view === 'page'} onclick={() => (settings.view = 'page')}>Page</button>
+          </div>
+        {/if}
+        <div class="panel-body">
+          {#if view === 'page'}
+            <PageView bookId={book.id} page={readingPage} visible={panelVisible} onread={readFromPage} />
+          {:else}
+            <Trail
+              {paras}
+              {sec}
+              {fi}
+              visible={panelVisible}
+              note={sessionNote}
+              onjump={jumpTo}
+              anchor={settings.trailPos === 'above' ? 0.62 : 0.3}
+            />
+          {/if}
+        </div>
+      </section>
     {/if}
   </main>
 
@@ -544,13 +607,15 @@
       <button class="icon-btn small" onclick={() => bump(-10)} aria-label="Slower"><Icon svg={icons.minus} /></button>
       <button class="wpm" onclick={() => toggleSheet('settings')} aria-label="Speed {settings.wpm} words per minute, open settings">
         <span class="num">{settings.wpm}</span><span class="unit">wpm</span>
+        {#if showReal}<span class="real" title="Real pace of this section with the current timing settings">{realWpm} real</span>{/if}
       </button>
       <button class="icon-btn small" onclick={() => bump(10)} aria-label="Faster"><Icon svg={icons.plus} /></button>
     </div>
     <div class="transport">
       <button class="icon-btn" onclick={prevSentence} aria-label="Back one sentence"><Icon svg={icons.back} /></button>
-      <button class="play" onclick={toggle} aria-label={playing ? 'Pause' : 'Read'}>
-        <Icon svg={playing ? icons.pause : icons.play} />
+      <button class="play" class:on={playing} onclick={toggle} aria-label={playing ? 'Pause' : 'Read'}>
+        <span class="glyph play-glyph"><Icon svg={icons.play} /></span>
+        <span class="glyph pause-glyph"><Icon svg={icons.pause} /></span>
       </button>
       <button class="icon-btn" onclick={nextSentence} aria-label="Next sentence"><Icon svg={icons.forward} /></button>
     </div>
@@ -645,9 +710,78 @@
     outline: none;
   }
 
-  /* the stage rises to make room for the read text below it */
-  .reader.trail-on .stage-wrap {
-    transform: translateY(-31%);
+  /* the panel (text or printed page) takes one part of the screen; the stage moves to the other.
+     both move on the compositor, so showing and hiding the panel stays smooth */
+  .panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 40%;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(18px);
+    pointer-events: none;
+    transition:
+      opacity 0.35s var(--ease),
+      transform 0.5s var(--ease);
+  }
+
+  .reader.panel-above .panel {
+    top: 0;
+    bottom: 42%;
+    transform: translateY(-18px);
+  }
+
+  .reader.panel-on .panel {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .reader.panel-on .stage-wrap {
+    transform: translateY(-30%);
+  }
+
+  .reader.panel-on.panel-above .stage-wrap {
+    transform: translateY(29%);
+  }
+
+  .panel-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tabs {
+    align-self: center;
+    display: flex;
+    gap: 2px;
+    margin: 6px 0 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--raised);
+  }
+
+  .reader.panel-above .tabs {
+    order: 1;
+    margin: 2px 0 6px;
+  }
+
+  .tabs button {
+    padding: 5px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 13px;
+    color: var(--haze);
+  }
+
+  .tabs button.on {
+    background: var(--ink);
+    color: var(--paper);
+    box-shadow: 0 0 0 1px var(--edge);
   }
 
   .error {
@@ -724,12 +858,27 @@
   }
 
   @media (hover: hover) {
-    .icon-btn:hover {
+    .icon-btn:hover,
+    .wpm:hover {
       background: var(--raised);
+    }
+
+    .play:hover {
+      box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+      transform: scale(1.04);
+    }
+
+    .tabs button:not(.on):hover {
+      color: var(--paper);
     }
   }
 
+  .wpm {
+    border-radius: 10px;
+  }
+
   .play {
+    position: relative;
     display: grid;
     place-items: center;
     width: 60px;
@@ -738,6 +887,39 @@
     border-radius: 50%;
     background: var(--paper);
     color: var(--ink);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  }
+
+  /* play and pause cross-fade and turn instead of swapping */
+  .glyph {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    transition:
+      opacity 0.22s var(--ease),
+      transform 0.32s var(--ease);
+  }
+
+  .pause-glyph,
+  .play.on .play-glyph {
+    opacity: 0;
+    transform: scale(0.6) rotate(-90deg);
+  }
+
+  .play.on .pause-glyph {
+    opacity: 1;
+    transform: none;
+  }
+
+  .real {
+    margin-left: 2px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--lamp-soft);
+    color: var(--lamp);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
   }
 
   .wpm {
@@ -773,7 +955,8 @@
       height: calc(42dvh - 56px - env(safe-area-inset-top));
     }
 
-    .reader.sheet-open .stage-wrap {
+    .reader.sheet-open .stage-wrap,
+    .reader.sheet-open.panel-above .stage-wrap {
       transform: none;
     }
 

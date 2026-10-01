@@ -7,6 +7,8 @@ export type FocusStyle = 'color' | 'bold' | 'off';
 export type Motion = 'slide' | 'fade' | 'off';
 export type ResumeMode = 'smart' | 'sentence' | 'words' | 'exact';
 export type TrailMode = 'pause' | 'always' | 'off';
+export type TrailPos = 'above' | 'below';
+export type PanelView = 'text' | 'page';
 
 export interface Settings {
   v: number;
@@ -33,12 +35,15 @@ export interface Settings {
   // horizontal fixation point as a share of the stage width
   pivot: number;
   trail: TrailMode;
+  trailPos: TrailPos;
+  // what the panel next to the stage shows: the text, or (for pdfs) the printed page
+  view: PanelView;
   autoSkip: Record<SkipTag, boolean>;
   keys: boolean;
 }
 
 // bump when a stored shape can no longer be read; older stored settings are then dropped
-const VERSION = 1;
+const VERSION = 2;
 
 const reducedMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -60,11 +65,14 @@ export const DEFAULTS: Settings = {
   focus: 'color',
   reticle: true,
   context: true,
-  contextGap: 2.5,
-  contextScale: 0.42,
+  contextGap: 2,
+  // the sentence uses the reading word's own size and font, only fainter
+  contextScale: 1,
   motion: reducedMotion ? 'fade' : 'slide',
   pivot: 0.42,
-  trail: 'pause',
+  trail: 'always',
+  trailPos: 'above',
+  view: 'text',
   autoSkip: {
     contents: true,
     index: true,

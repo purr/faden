@@ -5,7 +5,7 @@ import { parsePdf } from './pdf';
 import { parseHtml, parseText } from './text';
 
 // bump when parsing changes what a stored book contains; older books are re-read from their file
-export const PARSER_VERSION = 1;
+export const PARSER_VERSION = 2;
 
 export const ACCEPT =
   '.pdf,.epub,.txt,.md,.markdown,.html,.htm,application/pdf,application/epub+zip,text/plain,text/markdown,text/html';

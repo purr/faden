@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tokenize, type Section } from './tokenize';
-import { durations } from './timing';
+import { achievedWpm, durations } from './timing';
 import { orpRange } from './orp';
 
 const run = (t: string, lang = 'en', group = true) => tokenize([{ t }], { lang, group, splitHyphens: true });
@@ -83,12 +83,17 @@ describe('scripts', () => {
 });
 
 describe('timing', () => {
-  it('delivers exactly the chosen speed', () => {
-    const s = run('One two three, four five. Six seven eight nine ten eleven twelve. End.');
+  it('delivers exactly the chosen speed while no word hits the floor', () => {
+    const sentence = 'seven weekly reports arrived during winter though nobody really noticed them until spring began properly again this year';
+    const s = run(`${sentence} ${sentence} ${sentence}.`, 'en', false);
     const d = durations(s, { wpm: 300, pauses: 1, longWords: 1, honest: true });
-    const total = d.reduce((a, b) => a + b, 0);
-    const words = s.frames.reduce((n, f) => n + f.src, 0);
-    expect(total).toBeCloseTo((words * 60000) / 300, 6);
+    expect(achievedWpm(s, d)).toBeCloseTo(300, 6);
+  });
+  it('runs slower, and says so, when long words would squeeze short ones below 75% of a slot', () => {
+    const s = run('Ein Donaudampfschifffahrtsgesellschaftskapitän fuhr mit Kolonialwarenhändlern los.', 'de');
+    const d = durations(s, { wpm: 340, pauses: 1, longWords: 3, honest: true });
+    expect(Math.min(...d)).toBeGreaterThanOrEqual(0.75 * (60000 / 340) - 1e-9);
+    expect(achievedWpm(s, d)).toBeLessThan(340);
   });
   it('gives sentence ends and long words more time', () => {
     const s = run('Kurz Donaudampfschifffahrtsgesellschaft kurz kurz.', 'de', false);

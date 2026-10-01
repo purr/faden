@@ -1,13 +1,8 @@
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
-import type { Para, ParsedBook, SectionMeta } from '../types';
+import type { ParsedBook } from '../types';
 import { guessLang } from '../lang';
-import { classify, countWords, normTitle } from './classify';
 import { layoutPdf, pagesToRanges, type Run } from './pdflayout';
-
-interface Mark {
-  title: string;
-  page: number;
-}
+import { buildPdfSections, type Mark } from './pdfsections';
 
 // the polyfilled "legacy" build: the modern one targets safari 18+, and older iphones must import too
 async function pdfjs() {
@@ -16,7 +11,9 @@ async function pdfjs() {
   return lib;
 }
 
-type Doc = Awaited<ReturnType<Awaited<ReturnType<typeof pdfjs>>['getDocument']>['promise']>;
+type Lib = Awaited<ReturnType<typeof pdfjs>>;
+type Task = ReturnType<Lib['getDocument']>;
+type Doc = Awaited<Task['promise']>;
 
 async function outlineMarks(doc: Doc): Promise<Mark[]> {
   const outline = await doc.getOutline();
@@ -38,28 +35,6 @@ async function outlineMarks(doc: Doc): Promise<Mark[]> {
   }
   marks.sort((a, b) => a.page - b.page);
   return marks.filter((m, i) => i === 0 || m.page !== marks[i - 1].page);
-}
-
-function findStart(paras: Para[], from: number, page: number, title: string): number {
-  let i = from;
-  while (i < paras.length && (paras[i].pg ?? 0) < page) i++;
-  const want = normTitle(title).slice(0, 24);
-  if (want) {
-    for (let k = i; k < paras.length && (paras[k].pg ?? 0) === page; k++) {
-      if (normTitle(paras[k].t).startsWith(want)) return k;
-    }
-  }
-  return i;
-}
-
-function sectionsFrom(paras: Para[], cuts: { at: number; title: string }[]): { title: string; paras: Para[] }[] {
-  const out: { title: string; paras: Para[] }[] = [];
-  if (cuts.length && cuts[0].at > 0) out.push({ title: 'Opening pages', paras: paras.slice(0, cuts[0].at) });
-  cuts.forEach((c, i) => {
-    const slice = paras.slice(c.at, i + 1 < cuts.length ? cuts[i + 1].at : paras.length);
-    if (slice.length) out.push({ title: c.title, paras: slice });
-  });
-  return out;
 }
 
 export async function parsePdf(buf: ArrayBuffer, fileName: string, onProgress?: (p: number) => void): Promise<ParsedBook> {
@@ -92,63 +67,69 @@ export async function parsePdf(buf: ArrayBuffer, fileName: string, onProgress?: 
     const info = (meta?.info ?? {}) as Record<string, unknown>;
     const title = (typeof info.Title === 'string' && info.Title.trim()) || fileName.replace(/\.pdf$/i, '');
     const author = (typeof info.Author === 'string' && info.Author.trim()) || '';
-
-    const marks = await outlineMarks(doc);
-    let cuts: { at: number; title: string }[] = [];
-    if (marks.length >= 2) {
-      let from = 0;
-      for (const m of marks) {
-        const at = findStart(paras, from, m.page + 1, m.title);
-        if (at >= paras.length) break;
-        if (cuts.length && at <= cuts[cuts.length - 1].at) continue;
-        cuts.push({ at, title: m.title });
-        from = at;
-      }
-    }
-    if (cuts.length < 2) {
-      const heads = paras.map((p, i) => ({ p, i })).filter(({ p }) => p.h && p.h <= 2);
-      if (heads.length >= 3 && heads.length <= 400 && paras.length / heads.length >= 6) cuts = heads.map(({ p, i }) => ({ at: i, title: p.t }));
-      else {
-        // no structure at all: ten-page parts keep each part's text view light
-        cuts = [];
-        for (let i = 0; i < paras.length; i++) {
-          const pg = paras[i].pg ?? 1;
-          if (i === 0 || Math.floor((pg - 1) / 10) !== Math.floor(((paras[i - 1].pg ?? 1) - 1) / 10)) {
-            const a = Math.floor((pg - 1) / 10) * 10 + 1;
-            cuts.push({ at: i, title: `Pages ${a}–${Math.min(a + 9, doc.numPages)}` });
-          }
-        }
-      }
-    }
-
-    const sections = sectionsFrom(paras, cuts).map(({ title: t, paras: ps }) => {
-      const first = ps[0].pg ?? 1;
-      const last = ps[ps.length - 1].pg ?? first;
-      const pageWords = new Array(last - first + 1).fill(0);
-      for (const p of ps) pageWords[(p.pg ?? first) - first] += countWords([p]);
-      const pagesTag = pageTags.slice(first - 1, last).every((x) => x && x === pageTags[first - 1]) ? pageTags[first - 1] : null;
-      const meta: SectionMeta = {
-        title: t,
-        tag: classify({ title: t, paras: ps }) ?? (pagesTag as SectionMeta['tag']),
-        skip: false,
-        words: countWords(ps),
-        pages: [first, last],
-        pageWords,
-      };
-      return { meta, paras: ps };
-    });
-
+    const sections = buildPdfSections(paras, pageTags, await outlineMarks(doc), doc.numPages);
     const suggested = pageTags.map((t, i) => (t ? i + 1 : 0)).filter(Boolean);
-    const sample = paras.slice(0, 200).map((p) => p.t).join(' ');
     return {
       title,
       author,
-      lang: guessLang(sample),
+      lang: guessLang(paras.slice(0, 200).map((p) => p.t).join(' ')),
       kind: 'pdf',
       sections,
       suggestedSkipPages: pagesToRanges(suggested),
     };
   } finally {
     void task.destroy();
+  }
+}
+
+// renders pages of a stored pdf for the page view; keeps the document open between pages
+export class PdfPages {
+  private task: Task | null = null;
+  private doc: Promise<Doc> | null = null;
+  private pending: { cancel(): void } | null = null;
+
+  constructor(private data: ArrayBuffer) {}
+
+  private open(): Promise<Doc> {
+    this.doc ??= pdfjs().then((lib) => {
+      // pdf.js takes ownership of the bytes it is given, so it gets a copy
+      this.task = lib.getDocument({ data: new Uint8Array(this.data.slice(0)) });
+      return this.task.promise;
+    });
+    return this.doc;
+  }
+
+  async count(): Promise<number> {
+    return (await this.open()).numPages;
+  }
+
+  // draws page `n` (1-based) into `canvas`, `width` css pixels wide, sharp on high-density screens
+  async render(n: number, canvas: HTMLCanvasElement, width: number): Promise<void> {
+    const doc = await this.open();
+    this.pending?.cancel();
+    const page = await doc.getPage(Math.max(1, Math.min(n, doc.numPages)));
+    const base = page.getViewport({ scale: 1 });
+    const scale = width / base.width;
+    const ratio = Math.min(window.devicePixelRatio || 1, 3);
+    const vp = page.getViewport({ scale: scale * ratio });
+    canvas.width = Math.floor(vp.width);
+    canvas.height = Math.floor(vp.height);
+    canvas.style.width = `${Math.floor(vp.width / ratio)}px`;
+    canvas.style.height = `${Math.floor(vp.height / ratio)}px`;
+    const task = page.render({ canvas, viewport: vp });
+    this.pending = task;
+    try {
+      await task.promise;
+    } catch (e) {
+      // a newer page request cancelled this one; anything else is a real failure
+      if ((e as Error).name !== 'RenderingCancelledException') throw e;
+    } finally {
+      if (this.pending === task) this.pending = null;
+    }
+  }
+
+  destroy() {
+    this.pending?.cancel();
+    void this.task?.destroy();
   }
 }

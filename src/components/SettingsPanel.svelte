@@ -1,11 +1,21 @@
 <script lang="ts">
+  import { slide } from 'svelte/transition';
   import { autoSize, resetSettings, settings } from '../lib/settings.svelte';
+  import { ease, t } from '../lib/motion';
 
   const pauseLabel = $derived(
     settings.pauses === 0 ? 'Off' : settings.pauses < 0.75 ? 'Short' : settings.pauses <= 1.25 ? 'Normal' : 'Long',
   );
   const longLabel = $derived(
-    settings.longWords === 0 ? 'Off' : settings.longWords < 0.75 ? 'A little' : settings.longWords <= 1.25 ? 'Normal' : 'A lot',
+    settings.longWords === 0
+      ? 'Off'
+      : settings.longWords < 0.75
+        ? 'A little'
+        : settings.longWords <= 1.25
+          ? 'Normal'
+          : settings.longWords <= 2.25
+            ? 'More'
+            : 'A lot',
   );
   const shownSize = $derived(settings.size || autoSize(window.innerWidth));
 
@@ -41,7 +51,7 @@
     <span class="line"><span class="label">Words per minute</span><span class="value">{settings.wpm}</span></span>
     <input type="range" min="100" max="1000" step="10" bind:value={settings.wpm} />
     {#if settings.wpm > 350}
-      <span class="hint">Above about 350 wpm most readers understand noticeably less.</span>
+      <span class="hint" transition:slide={{ duration: t(200), easing: ease }}>Above about 350 wpm most readers understand noticeably less.</span>
     {/if}
   </label>
   {@render toggle('Speed includes pauses', settings.honest, (v) => (settings.honest = v), 'The speed you set is the speed you read at; pauses take their time from the words around them.')}
@@ -56,7 +66,7 @@
   </label>
   <label class="row col">
     <span class="line"><span class="label">More time for long words</span><span class="value">{longLabel}</span></span>
-    <input type="range" min="0" max="2" step="0.1" bind:value={settings.longWords} />
+    <input type="range" min="0" max="3" step="0.1" bind:value={settings.longWords} />
     <span class="hint">Long compounds like “Donaudampfschifffahrt” stay on screen longer.</span>
   </label>
   {@render toggle('Read short words together', settings.group, (v) => (settings.group = v), 'Shows “a house” or “in der Stadt” at once instead of word by word.')}
@@ -68,7 +78,7 @@
     ['exact', 'Where I stopped'],
   ], (v) => (settings.resume = v))}
   {#if settings.resume === 'smart'}
-    <p class="hint">Smart continues where you stopped after a quick glance away, a few words back after a short break, and from the start of the sentence after a long one.</p>
+    <p class="hint" transition:slide={{ duration: t(220), easing: ease }}>Smart continues where you stopped after a quick glance away, a few words back after a short break, and from the start of the sentence after a long one.</p>
   {/if}
 </section>
 
@@ -110,36 +120,47 @@
   <h3>The sentence around the word</h3>
   {@render toggle('Show the sentence', settings.context, (v) => (settings.context = v), 'Words already read sit faintly on the left, the next ones on the right.')}
   {#if settings.context}
+    <div transition:slide={{ duration: t(260), easing: ease }}>
     <label class="row col">
       <span class="line"><span class="label">Distance from the word</span><span class="value">{settings.contextGap.toFixed(1)}</span></span>
       <input type="range" min="1" max="8" step="0.5" bind:value={settings.contextGap} />
     </label>
     <label class="row col">
       <span class="line"><span class="label">Size</span><span class="value">{Math.round(settings.contextScale * 100)}%</span></span>
-      <input type="range" min="0.3" max="0.6" step="0.02" bind:value={settings.contextScale} />
+      <input type="range" min="0.3" max="1" step="0.05" bind:value={settings.contextScale} />
     </label>
     {@render choice('Movement', settings.motion, [
       ['slide', 'Slide'],
       ['fade', 'Fade'],
       ['off', 'None'],
     ], (v) => (settings.motion = v))}
+    </div>
   {/if}
 </section>
 
 <section>
-  <h3>Text you have read</h3>
-  {@render choice('Show the text', settings.trail, [
-    ['pause', 'When paused'],
+  <h3>Text and page panel</h3>
+  {@render choice('Show the panel', settings.trail, [
     ['always', 'Always'],
+    ['pause', 'When paused'],
     ['off', 'Never'],
   ], (v) => (settings.trail = v))}
+  {#if settings.trail !== 'off'}
+    <div transition:slide={{ duration: t(220), easing: ease }}>
+      {@render choice('Place it', settings.trailPos, [
+        ['above', 'Above the word'],
+        ['below', 'Below the word'],
+      ], (v) => (settings.trailPos = v))}
+    </div>
+  {/if}
+  <p class="hint">The panel shows the chapter text with what you have read; for PDFs it can show the printed page instead.</p>
 </section>
 
 <section>
   <h3>Keyboard</h3>
   {@render toggle('Keyboard shortcuts', settings.keys, (v) => (settings.keys = v))}
   {#if settings.keys}
-    <dl class="keys">
+    <dl class="keys" transition:slide={{ duration: t(240), easing: ease }}>
       <dt>Space</dt><dd>Read or pause</dd>
       <dt>← →</dt><dd>Sentence back or ahead</dd>
       <dt>Shift ← →</dt><dd>One word back or ahead</dd>
@@ -298,5 +319,15 @@
     border-radius: 12px;
     background: transparent;
     width: 100%;
+  }
+
+  @media (hover: hover) {
+    .seg button:not(.on):hover {
+      background: color-mix(in srgb, var(--paper) 7%, transparent);
+    }
+
+    .reset:hover {
+      background: var(--raised);
+    }
   }
 </style>

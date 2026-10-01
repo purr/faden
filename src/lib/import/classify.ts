@@ -3,7 +3,7 @@ import type { Para, SkipTag } from '../types';
 // section titles that mark material most readers skip, in the languages books commonly come in
 const TITLES: [SkipTag, RegExp][] = [
   ['contents', /^(table of contents|contents|content|inhalt|inhaltsverzeichnis|inhaltsübersicht|übersicht|sommaire|table des matières|índice|indice|sommario|inhoud|inhoudsopgave|spis treści|目次|目录|оглавление|содержание|list of (figures|tables|illustrations)|abbildungsverzeichnis|tabellenverzeichnis)$/],
-  ['index', /^(index|indices|register|stichwortverzeichnis|sachregister|personenregister|namensregister|ortsregister|schlagwortverzeichnis|subject index|name index|índice alfabético|indice analitico|索引|указатель|предметный указатель)$/],
+  ['index', /^(index|indices|register|((personen|namen|orts|sach)-? und )?(personen|namen|orts|sach|stichwort|schlagwort)verzeichnis|stichwortverzeichnis|sachregister|personenregister|namensregister|ortsregister|schlagwortverzeichnis|subject index|name index|índice alfabético|indice analitico|索引|указатель|предметный указатель)$/],
   ['glossary', /^(glossary|glossar|glossaire|glosario|glossario|wörterverzeichnis|begriffserklärungen?|abkürzungen|abkürzungsverzeichnis|abbreviations|list of abbreviations|用語集|术语表|глоссарий)$/],
   ['references', /^(bibliography|references|works cited|literature|literatur|literaturverzeichnis|literaturliste|quellen|quellenverzeichnis|sources|further reading|weiterführende literatur|bibliographie|bibliografía|bibliografia|参考文献|литература|список литературы)$/],
   ['credits', /^(copyright|copyright page|impressum|imprint|colophon|kolophon|acknowledg(e)?ments?|danksagung|dank|about the authors?|about this book|über den autor|über die autorin|über die autoren|über das buch|zum autor|zur autorin|zum buch|der autor|die autorin|also by .*|other (books|titles) by .*|weitere (bücher|titel) .*|dedication|widmung|title page|titelseite|titel|half title|credits|praise for .*|(the )?project gutenberg.*|.*project gutenberg.*licen[cs]e.*)$/],
@@ -69,12 +69,19 @@ export function tagFromTitle(title: string): SkipTag | null {
 }
 
 const RE_TOC_LINE = /(\.{2,}|…|·{2,}|\s)\s*([0-9]{1,4}|[ivxlc]{1,6})$/i;
+const RE_PAGE_LIST = /\b\d{1,4}(\s*ff?\.)?\s*[,;]\s*\d{1,4}\b/;
+const RE_MID_NUMBER = /\p{L}[)"“”»]?:?\s+\d{1,4}\s*(ff?\.)?[.,;]?\s+[\p{L}–-]/u;
 const RE_INDEX_LINE = /^[\p{L}][^,;]{0,60}[,;]\s*\d+([-–,;\s]+\d+)*\.?$/u;
 
 // a page or section whose lines mostly end in page numbers is a table of contents; "term, 12, 45" lines make an index
 export function tagFromLines(lines: string[]): SkipTag | null {
   const ls = lines.map((l) => l.trim()).filter((l) => l.length > 1);
   if (ls.length < 5) return null;
+  // index lines carry lists of pages ("204, 579, 582 f."); checked first, since they also end in numbers
+  const lists = ls.filter((l) => RE_PAGE_LIST.test(l)).length;
+  // "Grundlage der Nation 151. – Schwächung …": page numbers in the middle of the line, not only at its end
+  const mid = ls.filter((l) => RE_MID_NUMBER.test(l)).length;
+  if ((lists >= 5 && lists / ls.length >= 0.4) || (mid >= 8 && mid / ls.length >= 0.35)) return 'index';
   const toc = ls.filter((l) => l.length < 140 && RE_TOC_LINE.test(l)).length;
   if (toc >= 5 && toc / ls.length >= 0.45) return 'contents';
   const idx = ls.filter((l) => l.length < 120 && RE_INDEX_LINE.test(l)).length;

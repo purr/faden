@@ -9,6 +9,7 @@
     visible,
     note,
     onjump,
+    anchor,
   }: {
     paras: Para[];
     sec: Section;
@@ -16,6 +17,8 @@
     visible: boolean;
     note: string;
     onjump: (p: number, offset: number) => void;
+    // where the current word settles, as a share of the panel height: near the edge that faces the stage
+    anchor: number;
   } = $props();
 
   let box: HTMLElement | undefined = $state();
@@ -90,8 +93,8 @@
     }
     const r = cur.getBoundingClientRect();
     const v = box.getBoundingClientRect();
-    if (!wasVisible || r.top < v.top + 24 || r.bottom > v.bottom - 24) {
-      box.scrollTo({ top: box.scrollTop + r.top - v.top - v.height * 0.3, behavior: wasVisible ? 'smooth' : 'auto' });
+    if (!wasVisible || r.top < v.top + 48 || r.bottom > v.bottom - 48) {
+      box.scrollTo({ top: box.scrollTop + r.top - v.top - v.height * anchor, behavior: wasVisible ? 'smooth' : 'auto' });
     }
     wasVisible = true;
   });
@@ -133,7 +136,7 @@
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="trail" class:visible bind:this={box} onclick={tap} aria-hidden={!visible} inert={!visible}>
+<div class="trail" bind:this={box} onclick={tap} aria-hidden={!visible} inert={!visible}>
   {#if note}<p class="note">{note}</p>{/if}
   <p class="hint">Tap a word to read on from there.</p>
   {#each paras as p, i (i)}
@@ -146,30 +149,17 @@
 </div>
 
 <style>
+  /* fills the reader's panel; the panel itself handles showing, hiding and placement */
   .trail {
     position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    top: 38%;
+    inset: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 28px max(20px, calc((100% - 38rem) / 2)) 40vh;
+    -webkit-overflow-scrolling: touch;
+    padding: 40% max(20px, calc((100% - 38rem) / 2));
     font-size: 17px;
     line-height: 1.6;
-    opacity: 0;
-    transform: translateY(16px);
-    pointer-events: none;
-    transition:
-      opacity 0.35s var(--ease),
-      transform 0.45s var(--ease);
-    mask-image: linear-gradient(to bottom, transparent, #000 28px);
-  }
-
-  .trail.visible {
-    opacity: 1;
-    transform: none;
-    pointer-events: auto;
+    mask-image: linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent);
   }
 
   p,

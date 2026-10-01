@@ -272,4 +272,22 @@
     text-decoration: line-through;
     text-decoration-color: var(--line);
   }
+
+  @media (hover: hover) {
+    .chip:hover {
+      border-color: var(--lamp);
+    }
+
+    .suggest:hover {
+      background: var(--lamp-soft);
+    }
+
+    .name:not(:disabled):hover .t {
+      color: var(--lamp);
+    }
+  }
+
+  .t {
+    transition: color 0.2s var(--ease);
+  }
 </style>

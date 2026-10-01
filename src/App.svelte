@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
+  import { ease, t } from './lib/motion';
   import { registerSW } from 'virtual:pwa-register';
   import Library from './components/Library.svelte';
   import Reader from './components/Reader.svelte';
@@ -46,11 +48,25 @@
 </script>
 
 {#if ready}
+  <!-- the reader slides in over the library, like a pushed screen on ios; going back reverses it -->
   {#if app.openId}
     {#key app.openId}
-      <Reader bookId={app.openId} onexit={() => (app.openId = null)} />
+      <div class="screen" in:fly={{ x: 48, duration: t(360), easing: ease, opacity: 0 }} out:fly={{ x: 48, duration: t(260), easing: ease, opacity: 0 }}>
+        <Reader bookId={app.openId} onexit={() => (app.openId = null)} />
+      </div>
     {/key}
   {:else}
-    <Library />
+    <div class="screen" in:fade={{ duration: t(260), delay: t(80) }} out:fade={{ duration: t(160) }}>
+      <Library />
+    </div>
   {/if}
 {/if}
+
+<style>
+  .screen {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+</style>

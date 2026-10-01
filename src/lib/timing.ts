@@ -11,6 +11,8 @@ export interface TimingOpts {
 
 // a frame is never shorter than this: ~2.5 refreshes at 60 hz; decoding needs ~40 ms (rubin & turano 1992)
 export const MIN_MS = 40;
+// shortest share of a normal word slot any frame gets in the honest mode
+const FLOOR_SHARE = 0.75;
 
 // extra slots after a sentence, by its length in words (spritz patent us8903174b2)
 function sentencePause(n: number): number {
@@ -25,8 +27,9 @@ export function frameUnits(f: Frame, sec: Section, o: TimingOpts): { word: numbe
   if (w.script === 'cj') {
     word += Math.max(0.6, f.g / 1.6);
   } else {
-    // longer words need longer: +7% per letter past 6, capped; german compounds hit the cap late
-    const lf = f.g <= 6 ? 1 : Math.min(2.6, 1 + 0.07 * (f.g - 6));
+    // longer words need longer: +10% per letter past 5; a 19-letter compound takes ~2.4 slots at normal
+    // strength, since long words are refixated in normal reading
+    const lf = f.g <= 5 ? 1 : Math.min(4, 1 + 0.1 * (f.g - 5));
     let hw = 1 + (lf - 1) * o.longWords;
     // numbers and acronyms are decoded symbol by symbol (tool convention: stutter, dashreader)
     if (w.num || w.acronym) hw *= 1.3;
@@ -69,6 +72,10 @@ export function durations(sec: Section, o: TimingOpts): Float64Array {
     for (let i = 0; i < n; i++) d[i] = Math.max(MIN_MS, units[i] * base);
     return d;
   }
+  // the time long words and pauses gain comes from the other words, but no word drops below 75% of
+  // its normal slot (FLOOR_SHARE): past that, short words flash by unread. when the floor binds, the section runs
+  // slower than the set speed, and the reader shows the real speed (achievedWpm)
+  const floor = Math.max(MIN_MS, FLOOR_SHARE * base);
   const budget = src * base;
   const pinned = new Uint8Array(n);
   let pinnedMs = 0;
@@ -77,9 +84,9 @@ export function durations(sec: Section, o: TimingOpts): Float64Array {
   for (let round = 0; round < 8; round++) {
     let changed = false;
     for (let i = 0; i < n; i++) {
-      if (!pinned[i] && units[i] * scale < MIN_MS) {
+      if (!pinned[i] && units[i] * scale < floor) {
         pinned[i] = 1;
-        pinnedMs += MIN_MS;
+        pinnedMs += floor;
         free -= units[i];
         changed = true;
       }
@@ -87,11 +94,16 @@ export function durations(sec: Section, o: TimingOpts): Float64Array {
     if (!changed || free <= 0) break;
     scale = (budget - pinnedMs) / free;
   }
-  // past ~1000 wpm the floor wins: the section then runs slower than asked, never faster
-  if (scale <= 0 || free <= 0) scale = 0;
-  for (let i = 0; i < n; i++) d[i] = pinned[i] ? MIN_MS : Math.max(MIN_MS, units[i] * scale);
+  // long words and pauses are never squeezed harder than the floor either, so their extra time survives
+  scale = Math.max(scale, FLOOR_SHARE * base);
+  for (let i = 0; i < n; i++) d[i] = pinned[i] ? floor : Math.max(floor, units[i] * scale);
   return d;
 }
 
-// time to read `words` source words at `wpm`, the promise the honest mode keeps
-export const minutesFor = (words: number, wpm: number) => words / wpm;
+// the speed a section actually runs at with these durations
+export function achievedWpm(sec: Section, d: Float64Array): number {
+  let ms = 0;
+  for (let i = 0; i < d.length; i++) ms += d[i];
+  const words = sec.frames.reduce((n, f) => n + f.src, 0);
+  return ms ? (words * 60000) / ms : 0;
+}

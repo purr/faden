@@ -182,7 +182,7 @@ export class Stage {
       const w = this.widths[k - s0];
       xs[k - s0] = rtl ? edge : edge - w;
       edge = rtl ? edge + w + sp : edge - w - sp;
-      op[k - s0] = 0.42 * Math.pow(0.8, r - 1);
+      op[k - s0] = 0.34 * Math.pow(0.8, r - 1);
     }
     const behindFar = edge;
     edge = aheadStart;
@@ -190,7 +190,7 @@ export class Stage {
       const w = this.widths[k - s0];
       xs[k - s0] = rtl ? edge - w : edge;
       edge = rtl ? edge - w - sp : edge + w + sp;
-      op[k - s0] = 0.55 * Math.pow(0.8, r - 1);
+      op[k - s0] = 0.46 * Math.pow(0.8, r - 1);
     }
     const aheadFar = edge;
     for (let k = f.w0; k <= f.w1; k++) xs[k - s0] = px - this.widths[k - s0] / 2;
@@ -219,7 +219,7 @@ export class Stage {
       old.style.opacity = '0';
       setTimeout(() => old.remove(), 260);
     }
-    this.ctx.font = `400 ${o.size * o.contextScale}px ${o.ctxFont}`;
+    this.ctx.font = `${o.weight} ${o.size * o.contextScale}px ${o.ctxFont}`;
     this.space = this.ctx.measureText(' ').width;
     this.spans = [];
     this.widths = [];

@@ -24,11 +24,55 @@
       onclose();
     }
   }
+
+  // drag the grabber or header down to close, as on ios; dragging up only stretches a little
+  const CLOSE_DISTANCE = 110;
+  const CLOSE_VELOCITY = 0.5; // px per ms
+  let drag = $state(0);
+  let dragging = $state(false);
+  let from: { y: number; t: number } | null = null;
+
+  function dragStart(e: PointerEvent) {
+    if (e.button !== 0 || window.innerWidth >= 900 || (e.target as Element).closest('button')) return;
+    from = { y: e.clientY, t: performance.now() };
+    dragging = true;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  }
+
+  function dragMove(e: PointerEvent) {
+    if (!from) return;
+    const dy = e.clientY - from.y;
+    drag = dy > 0 ? dy : dy / 5;
+  }
+
+  function dragEnd(e: PointerEvent) {
+    if (!from) return;
+    const dy = e.clientY - from.y;
+    const dt = Math.max(1, performance.now() - from.t);
+    from = null;
+    dragging = false;
+    if (dy > CLOSE_DISTANCE || (dy > 20 && dy / dt > CLOSE_VELOCITY)) onclose();
+    drag = 0;
+  }
 </script>
 
 <!-- not modal: the reading stage stays visible and usable above it, so every change shows live -->
-<div class="sheet" class:open role="dialog" aria-modal="false" aria-label={title} tabindex="-1" bind:this={panel} onkeydown={key} inert={!open}>
-  <header>
+<div
+  class="sheet"
+  class:open
+  class:dragging
+  role="dialog"
+  aria-modal="false"
+  aria-label={title}
+  tabindex="-1"
+  bind:this={panel}
+  onkeydown={key}
+  inert={!open}
+  style:transform={open && drag ? `translateY(${drag}px)` : undefined}
+>
+  <!-- the close button is the keyboard and screen-reader way to dismiss; dragging is a touch shortcut -->
+  <header role="presentation" onpointerdown={dragStart} onpointermove={dragMove} onpointerup={dragEnd} onpointercancel={dragEnd}>
+    <span class="grab" aria-hidden="true"></span>
     <h2>{title}</h2>
     <button class="close" onclick={onclose} aria-label="Close {title.toLowerCase()}"><Icon svg={icons.close} /></button>
   </header>
@@ -58,11 +102,40 @@
     transform: none;
   }
 
+  .sheet.dragging {
+    transition: none;
+  }
+
   header {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 14px 12px 6px 20px;
+    padding: 20px 12px 6px 20px;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .grab {
+    position: absolute;
+    top: 7px;
+    left: 50%;
+    width: 38px;
+    height: 5px;
+    margin-left: -19px;
+    border-radius: 3px;
+    background: var(--edge);
+  }
+
+  @media (min-width: 900px) {
+    header {
+      cursor: default;
+      touch-action: auto;
+    }
+
+    .grab {
+      display: none;
+    }
   }
 
   h2 {
@@ -100,6 +173,12 @@
       border-left: 1px solid var(--edge);
       border-radius: 0;
       transform: translateX(105%);
+    }
+  }
+
+  @media (hover: hover) {
+    .close:hover {
+      background: var(--edge);
     }
   }
 </style>

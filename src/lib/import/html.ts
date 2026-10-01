@@ -16,6 +16,9 @@ export function cleanText(s: string): string {
       .replace(/[\u{ad}\u{200b}\u{feff}]/gu, '')
       // typographic ligatures (fi, fl, ff …) back to letters
       .replace(/[\u{fb00}-\u{fb06}]/gu, (c) => c.normalize('NFKC'))
+      // fraktur transcriptions: long s reads as s, the double oblique hyphen is a plain hyphen
+      .replace(/\u{17f}/gu, 's')
+      .replace(/\u{2e17}/gu, '-')
   );
 }
 
