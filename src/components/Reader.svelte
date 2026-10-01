@@ -16,8 +16,9 @@
   import { parseRanges } from '../lib/import/pdflayout';
   import { baseLang } from '../lib/lang';
   import { PARSER_VERSION, bookFrom, parseFile } from '../lib/import';
-  import { refreshBooks } from '../lib/app.svelte';
   import { formatDuration } from '../lib/format';
+  import { copyReport, report } from '../lib/debug.svelte';
+  import { app, refreshBooks } from '../lib/app.svelte';
   import type { Book, Para, SectionMeta } from '../lib/types';
 
   let { bookId, onexit }: { bookId: string; onexit: () => void } = $props();
@@ -208,6 +209,7 @@
       stage?.setOptions(stageOptions());
       await loadAt(b.pos.s, b.pos.w, false);
     } catch (e) {
+      report('open book', e);
       error = (e as Error).message;
     }
   }
@@ -587,7 +589,10 @@
       aria-label={playing ? 'Pause' : 'Read'}
     ></div>
     {#if error}
-      <p class="error" role="alert">{error}</p>
+      <div class="error" role="alert">
+        <p>{error}</p>
+        <button onclick={async () => (await copyReport()) || (app.debugOpen = true)}>Copy details</button>
+      </div>
     {/if}
     {#if sec && book}
       <section class="panel" aria-label={view === 'page' ? 'Printed page' : 'Text you have read'} inert={!panelVisible}>
@@ -786,8 +791,23 @@
     left: 20px;
     right: 20px;
     top: 40%;
-    margin: 0;
+    display: grid;
+    justify-items: center;
+    gap: 12px;
     text-align: center;
+    color: var(--danger);
+  }
+
+  .error p {
+    margin: 0;
+  }
+
+  .error button {
+    min-height: 44px;
+    padding: 8px 16px;
+    border: 1px solid var(--danger);
+    border-radius: 12px;
+    background: transparent;
     color: var(--danger);
   }
 

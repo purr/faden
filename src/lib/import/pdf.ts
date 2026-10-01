@@ -14,6 +14,20 @@ async function pdfjs() {
 type Lib = Awaited<ReturnType<typeof pdfjs>>;
 type Task = ReturnType<Lib['getDocument']>;
 type Doc = Awaited<Task['promise']>;
+type Page = Awaited<ReturnType<Doc['getPage']>>;
+type TextItems = Awaited<ReturnType<Page['getTextContent']>>['items'];
+
+// page.getTextContent() loops over a ReadableStream with `for await`, which Safari on iOS cannot do
+// ("undefined is not a function near '...e of t...'"); reading the same stream with a reader works everywhere
+async function textItems(page: Page): Promise<TextItems> {
+  const reader = page.streamTextContent().getReader();
+  const items: TextItems = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return items;
+    items.push(...(value as { items: TextItems }).items);
+  }
+}
 
 async function outlineMarks(doc: Doc): Promise<Mark[]> {
   const outline = await doc.getOutline();
@@ -50,9 +64,8 @@ export async function parsePdf(buf: ArrayBuffer, fileName: string, onProgress?: 
     const pages: Run[][] = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
-      const tc = await page.getTextContent();
       const runs: Run[] = [];
-      for (const it of tc.items) {
+      for (const it of await textItems(page)) {
         if (!('str' in it)) continue;
         runs.push({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: it.height || Math.hypot(it.transform[2], it.transform[3]), eol: it.hasEOL });
       }

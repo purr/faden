@@ -66,12 +66,15 @@ export function htmlToParas(root: Element, opts: HtmlOptions = {}): Para[] {
     if (node.nodeType !== 1) return;
     const el = node as Element;
     const tag = el.localName.toLowerCase();
-    if (SKIP.has(tag) && !(tag === 'nav' && opts.keepNav)) return;
+    // role="navigation" is a <nav> by another name (wikipedia's "see also" notes and navigation boxes)
+    const nav = tag === 'nav' || el.getAttribute('role') === 'navigation';
+    if (nav ? !opts.keepNav : SKIP.has(tag)) return;
     if (el.hasAttribute('hidden') || el.getAttribute('aria-hidden') === 'true') return;
     const type = el.getAttribute('epub:type') ?? el.getAttributeNS('http://www.idpf.org/2007/ops', 'type') ?? el.getAttribute('role') ?? '';
     // footnote markers and footnote bodies interrupt the sentence they sit in
     if (NOTE_TYPES.test(type) || /doc-(noteref|footnote|endnote)/.test(type)) return;
-    if (tag === 'sup' && /^[\s\d*†‡§,–-]*$/.test(el.textContent ?? '')) return;
+    // reference markers: "1", "*", "†" in books, "[1]" on wikipedia
+    if (tag === 'sup' && /^[\s\d*†‡§,–[\]-]*$/.test(el.textContent ?? '')) return;
     if (tag === 'br') {
       append(' ');
       return;

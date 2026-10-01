@@ -3,11 +3,18 @@ import { guessLang } from '../lang';
 import { bodyOf, cleanText, htmlToParas } from './html';
 import { classify, countWords } from './classify';
 
+// a link target: no spaces, parentheses only in pairs ("wiki/Faust_(Goethe)"), and an optional quoted title.
+// stopping at the first ")" would leave the rest of such a target in the text as words
+const TARGET = String.raw`\((?:[^()\s]|\([^()\s]*\))*(?:\s+(?:"[^"]*"|'[^']*'))?\)`;
+const RE_IMAGE = new RegExp(String.raw`!\[[^\]]*\]${TARGET}`, 'g');
+const RE_LINK = new RegExp(String.raw`\[([^\]]*)\]${TARGET}`, 'g');
+
 // markdown inline marks to plain text with italic/bold ranges
 function inlineMd(src: string): { t: string; em: Emph[] } {
   let s = src
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(RE_IMAGE, '')
+    // links keep their text; an empty one ("[](url)", a heading anchor) leaves nothing
+    .replace(RE_LINK, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/<[^>]+>/g, '');
   const em: Emph[] = [];
@@ -86,7 +93,11 @@ function plainParas(src: string): Para[] {
 
 // sections from headings; long unstructured texts are cut into parts of ~3000 words
 function sectionize(paras: Para[]): { meta: SectionMeta; paras: Para[] }[] {
-  const top = Math.min(...paras.filter((p) => p.h).map((p) => p.h!), 9);
+  const levels = paras.filter((p) => p.h).map((p) => p.h!);
+  // the level that structures a text occurs more than once; a lone title above it (often added from <title>) does not
+  // set it, or a page with only ### headings would lose all its sections
+  const repeated = levels.filter((h, i) => levels.indexOf(h) !== i);
+  const top = Math.min(...(repeated.length ? repeated : levels), 9);
   const cuts = paras.map((p, i) => (p.h && p.h <= Math.max(top, 2) ? i : -1)).filter((i) => i >= 0);
   const groups: Para[][] = [];
   if (cuts.length >= 2) {
@@ -123,11 +134,23 @@ export function parseText(src: string, fileName: string, title?: string): Parsed
   return { title: name, author: '', lang: guessLang(text.slice(0, 20000)), kind: 'text', sections: sectionize(paras), suggestedSkipPages: '' };
 }
 
+// a web page's own text sits in <main>, or in its one <article>; menus, sidebars and footers around it are not part of it
+function mainOf(doc: Document): Element {
+  const main = doc.querySelector('main, [role="main"]');
+  if (main) return main;
+  const articles = doc.getElementsByTagName('article');
+  return articles.length === 1 ? articles[0] : bodyOf(doc);
+}
+
 export function parseHtml(src: string, fileName: string): ParsedBook {
   const doc = new DOMParser().parseFromString(src, 'text/html');
-  const paras = htmlToParas(bodyOf(doc));
+  let paras = htmlToParas(mainOf(doc));
+  // an empty or hidden landmark (a skip-link target, a placeholder) is not the page: then the whole page is read
+  if (!paras.length) paras = htmlToParas(bodyOf(doc));
   if (!paras.length) throw new Error(`html: "${fileName}" has no readable text`);
   const title = cleanText(doc.title || '').trim() || fileName.replace(/\.[^.]+$/, '');
+  // pages that keep their headline only in <title> (wikipedia's api) start with it, so the first section is named and read
+  if (!paras.some((p) => p.h === 1)) paras.unshift({ t: title, h: 1 });
   const lang = doc.documentElement.lang || guessLang(paras.slice(0, 100).map((p) => p.t).join(' '));
   return { title, author: '', lang, kind: 'text', sections: sectionize(paras), suggestedSkipPages: '' };
 }

@@ -11,6 +11,8 @@ export const app = $state({
   // the browser promised not to evict the library under storage pressure
   persisted: false,
   usage: 0,
+  // the debug panel with the copyable error report
+  debugOpen: false,
 });
 
 let updater: ((reload?: boolean) => Promise<void>) | null = null;

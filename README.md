@@ -57,6 +57,14 @@ chinese is shown in 2–4 character words, japanese in phrase chunks without a f
 
 pdf (with a text layer), epub, markdown, plain text and html, or pasted text. pdf import finds chapters from bookmarks, large headings or lines like "1. Kapitel", removes running headers and page numbers, joins hyphenated line ends, and turns letter-spaced emphasis ("G l e i c h e s", common in german books) back into words shown in italics. tables of contents and indexes are detected per page. kindle files (mobi, azw3, kfx) need converting to epub first, for example with calibre. scanned pdfs need ocr first.
 
+### from a link
+
+"from a link" imports a pdf, epub, text file or web page by its address, with or without `http://` or `https://` (the app always uses https). the file is downloaded directly when the site allows other apps to read it, as wikipedia (through its page api), github raw files and arxiv do. most sites don't; then the address goes to the [r.jina.ai](https://jina.ai/reader/) reader service, which returns the page's text (about 20 links a minute without an account). the service sees the address, never your library. it cannot open epubs, and a pdf it reads arrives as text without the page view; for those, download the file and use "import a book".
+
+## when something goes wrong
+
+an error shows a bar with **copy details**. the library footer's **debug info** opens the same report: app version and build time, browser, screen, and the last 40 errors with full stack traces, kept across restarts. paste it into an issue together with what you did just before.
+
 ## development
 
 ```sh
@@ -66,7 +74,7 @@ npm test         # unit tests (tokenizer, timing, importers)
 npm run check    # svelte and typescript checks
 npm run build    # production build into dist/
 npm run icons    # regenerate app icons from public/icon.svg
-npm run deploy   # build and publish dist/ to the gh-pages branch (github pages)
+npm run deploy   # build, refuse if the build contains local file paths, publish dist/ to the gh-pages branch
 ```
 
 stack: svelte 5, typescript, vite, vite-plugin-pwa (offline cache), indexeddb via idb, pdf.js (legacy build, so older iphones can import pdfs), fflate for epub archives.
@@ -75,4 +83,4 @@ stack: svelte 5, typescript, vite, vite-plugin-pwa (offline cache), indexeddb vi
 
 `dist/` is a static site that works at a domain root or any sub-path. it must be served over https (or from localhost), because service workers, and with them offline use, need a secure origin. any static host works, for example github pages, cloudflare pages or netlify.
 
-books never leave the device: hosting serves only the app itself.
+books never leave the device: hosting serves only the app itself. importing from a link contacts that site, and the reader service when the site blocks direct downloads.

@@ -4,6 +4,8 @@
   import { icons } from '../lib/icons';
   import { getFile } from '../lib/db';
   import { PdfPages } from '../lib/import/pdf';
+  import { copyReport, report } from '../lib/debug.svelte';
+  import { app } from '../lib/app.svelte';
 
   let {
     bookId,
@@ -57,7 +59,10 @@
   $effect(() => {
     if (!visible || !pages || !canvas || !width) return;
     const w = Math.min(width - 24, 860) * zoom;
-    pages.render(shown, canvas, w).catch((e: Error) => (error = `This page could not be drawn (${e.message}).`));
+    pages.render(shown, canvas, w).catch((e: Error) => {
+      report(`pdf page ${shown}`, e);
+      error = `This page could not be drawn (${e.message}).`;
+    });
   });
 
   function go(delta: number) {
@@ -104,7 +109,10 @@
     </span>
   </div>
   {#if error}
-    <p class="error">{error}</p>
+    <div class="error" role="alert">
+      <p>{error}</p>
+      <button onclick={async () => (await copyReport()) || (app.debugOpen = true)}>Copy details</button>
+    </div>
   {:else}
     <div class="paper" class:zoomed={zoom > 1} onpointerdown={pointerDown} onpointerup={pointerUp} role="presentation">
       <canvas bind:this={canvas} aria-label="Page {shown}"></canvas>
@@ -197,9 +205,26 @@
   }
 
   .error {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
     margin: 20px;
     color: var(--danger);
     font-size: 14px;
+  }
+
+  .error p {
+    margin: 0;
+  }
+
+  .error button {
+    min-height: 44px;
+    padding: 8px 16px;
+    border: 1px solid var(--danger);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--danger);
   }
 
   @media (hover: hover) {

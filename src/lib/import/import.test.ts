@@ -4,6 +4,7 @@ import { parseEpub } from './epub';
 import { parseText } from './text';
 import { layoutPdf, parseRanges } from './pdflayout';
 import { collapseSpacing } from './spacing';
+import { asUtf8, directUrl, fileName, normalizeUrl, typeOf } from './url';
 
 const xhtml = (body: string) =>
   `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>x</title></head><body>${body}</body></html>`;
@@ -71,6 +72,16 @@ describe('markdown', () => {
       { s: 14, e: 16, k: 1 },
     ]);
   });
+
+  it('cuts at the repeated heading level, not at a lone title above it', () => {
+    const b = parseText(['# Free software', '### Freedoms', 'Text.', '### History', 'More.'].join('\n\n'), 'page.md');
+    expect(b.sections.map((s) => s.meta.title)).toEqual(['Free software', 'Freedoms', 'History']);
+  });
+
+  it('drops whole link targets, parentheses and titles included', () => {
+    const b = parseText('A [romance](https://en.wikipedia.org/wiki/Romance_(prose_fiction) "Romance (prose fiction)") and a drama.', 'a.md');
+    expect(b.sections[0].paras[0].t).toBe('A romance and a drama.');
+  });
 });
 
 describe('letter spacing', () => {
@@ -115,5 +126,43 @@ describe('pdf layout', () => {
   });
   it('reads page ranges', () => {
     expect([...parseRanges('1-3, 7 ; 9 – 10')]).toEqual([1, 2, 3, 7, 9, 10]);
+  });
+});
+
+describe('links', () => {
+  it('takes addresses with or without http or https, always as https', () => {
+    expect(normalizeUrl('de.wikipedia.org/wiki/Faden').href).toBe('https://de.wikipedia.org/wiki/Faden');
+    expect(normalizeUrl('  http://Example.com/a?b=1#part ').href).toBe('https://example.com/a?b=1');
+    expect(normalizeUrl('HTTPS://example.com').href).toBe('https://example.com/');
+    expect(() => normalizeUrl('just some words')).toThrow('not a web address');
+    expect(() => normalizeUrl('faden')).toThrow('not a web address');
+  });
+
+  it('reads wiki pages through their page api, subpages included', () => {
+    expect(directUrl(normalizeUrl('de.m.wikipedia.org/wiki/Faust_(Goethe)'))).toBe('https://de.wikipedia.org/w/rest.php/v1/page/Faust_(Goethe)/html');
+    expect(directUrl(normalizeUrl('de.wikisource.org/wiki/Faust/Tragödie'))).toBe('https://de.wikisource.org/w/rest.php/v1/page/Faust%2FTrag%C3%B6die/html');
+    expect(directUrl(normalizeUrl('arxiv.org/pdf/1706.03762'))).toBe('https://arxiv.org/pdf/1706.03762');
+  });
+
+  it('names a download after its content, so it is re-read the same way later', () => {
+    const bytes = (s: string) => new TextEncoder().encode(s).buffer as ArrayBuffer;
+    expect(typeOf(bytes('%PDF-1.7 ...'), 'application/octet-stream')).toBe('application/pdf');
+    expect(typeOf(bytes('<!DOCTYPE html><p>x'), 'text/plain')).toBe('text/html');
+    expect(fileName(normalizeUrl('arxiv.org/pdf/1706.03762'), 'application/pdf')).toBe('1706.03762.pdf');
+    expect(fileName(normalizeUrl('raw.githubusercontent.com/o/r/main/README.md'), 'text/plain')).toBe('README.md');
+    expect(fileName(normalizeUrl('example.com/F%FCr_Elise.pdf'), 'application/pdf')).toBe('F%FCr_Elise.pdf');
+    // a text about pdfs is text; an epub is recognised by its header too
+    expect(typeOf(bytes('# Notes: every file starts with %PDF-1.7'), 'text/markdown')).toBe('text/markdown');
+    expect(typeOf(new Uint8Array([0x50, 0x4b, 3, 4, 0, 0]).buffer, 'application/epub+zip')).toBe('application/epub+zip');
+  });
+
+  it('refuses addresses with a password and keeps wiki revisions', () => {
+    expect(() => normalizeUrl('https://me:secret@books.example.com/b.epub')).toThrow('user name or password');
+    expect(directUrl(normalizeUrl('en.wikipedia.org/wiki/Thread?oldid=123'))).toBe('https://en.wikipedia.org/w/rest.php/v1/revision/123/html');
+  });
+
+  it('stores text downloads as utf-8, whatever charset they came in', () => {
+    const latin1 = new Uint8Array([0x47, 0x72, 0xfc, 0xdf, 0x65]).buffer;
+    expect(new TextDecoder().decode(asUtf8(latin1, 'text/plain', 'text/plain; charset=iso-8859-1'))).toBe('Grüße');
   });
 });

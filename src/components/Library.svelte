@@ -7,17 +7,28 @@
   import { deleteBook, storeBook } from '../lib/db';
   import { ACCEPT, bookFrom, parseFile } from '../lib/import';
   import { parseText } from '../lib/import/text';
+  import { fetchBook, type Download } from '../lib/import/url';
   import { settings } from '../lib/settings.svelte';
+  import { copyReport, debug, report } from '../lib/debug.svelte';
   import { formatBytes, formatDuration } from '../lib/format';
   import type { Book } from '../lib/types';
 
-  let busy: { name: string; progress: number } | null = $state(null);
+  // progress is NaN while it cannot be measured
+  let busy: { step: string; name: string; progress: number } | null = $state(null);
   let error = $state('');
-  let pasteOpen = $state(false);
+  let form: 'paste' | 'link' | null = $state(null);
   let pasteTitle = $state('');
   let pasteText = $state('');
+  let link = $state('');
   let confirmDelete: string | null = $state(null);
   let dragging = $state(false);
+  let copied = $state(false);
+
+  async function copyDetails() {
+    copied = await copyReport();
+    // the clipboard was refused: the debug panel shows the text to copy by hand
+    if (!copied) app.debugOpen = true;
+  }
   let fileInput: HTMLInputElement;
 
   const showInstall = isIOS() && !isStandalone();
@@ -35,24 +46,59 @@
     return { share, left: ((total - done) / settings.wpm) * 60000 };
   }
 
+  function fail(where: string, name: string, e: unknown) {
+    report(where, e);
+    copied = false;
+    error =
+      (e as DOMException).name === 'QuotaExceededError' ? `There is not enough storage left on this device to keep "${name}".` : (e as Error).message;
+  }
+
+  async function importData(file: Download) {
+    busy = { step: 'Reading', name: file.name, progress: 0 };
+    // pdf.js takes over the buffer it parses, so it gets a copy and the original is stored
+    const parsed = await parseFile(file.data.slice(0), file.name, file.type, (p) => busy && (busy.progress = p));
+    const { book, contents } = bookFrom(parsed, { name: file.name, size: file.data.byteLength });
+    await storeBook(book, contents, file);
+    await refreshBooks();
+    await refreshStorage(true);
+  }
+
   async function importFiles(files: FileList | File[]) {
+    // one import at a time: a second one would clear the first one's progress and unlock its button midway
+    if (busy) {
+      error = 'Wait until the current import has finished.';
+      return;
+    }
     error = '';
     for (const file of Array.from(files)) {
-      busy = { name: file.name, progress: 0 };
+      busy = { step: 'Reading', name: file.name, progress: 0 };
       try {
-        const data = await file.arrayBuffer();
-        const parsed = await parseFile(data.slice(0), file.name, file.type, (p) => busy && (busy.progress = p));
-        const { book, contents } = bookFrom(parsed, { name: file.name, size: file.size });
-        await storeBook(book, contents, { name: file.name, type: file.type, data });
-        await refreshBooks();
-        await refreshStorage(true);
+        await importData({ name: file.name, type: file.type, data: await file.arrayBuffer() });
       } catch (e) {
-        error = (e as Error).message;
-        if ((e as DOMException).name === 'QuotaExceededError') error = `There is not enough storage left on this device to keep "${file.name}".`;
+        fail(`import ${file.name}`, file.name, e);
       }
     }
     busy = null;
     if (fileInput) fileInput.value = '';
+  }
+
+  async function importLink() {
+    error = '';
+    const input = link.trim();
+    if (!input || busy) return;
+    const shown = input.replace(/^https?:\/\//i, '');
+    try {
+      const file = await fetchBook(input, (s) => {
+        busy = { step: s.step === 'reader' ? 'Reading through the reader service' : 'Downloading', name: shown, progress: s.progress };
+      });
+      await importData(file);
+      form = null;
+      link = '';
+    } catch (e) {
+      // the messages name the checked address; the raw input stays out of the stored log
+      fail('import link', shown, e);
+    }
+    busy = null;
   }
 
   async function importPaste() {
@@ -65,13 +111,13 @@
       const data = new TextEncoder().encode(text).buffer as ArrayBuffer;
       const { book, contents } = bookFrom(parsed, { name: `${title}.txt`, size: data.byteLength });
       await storeBook(book, contents, { name: `${title}.txt`, type: 'text/plain', data });
-      pasteOpen = false;
+      form = null;
       pasteText = '';
       pasteTitle = '';
       await refreshBooks();
       app.openId = book.id;
     } catch (e) {
-      error = (e as Error).message;
+      fail('import pasted text', 'the pasted text', e);
     }
   }
 
@@ -109,11 +155,16 @@
     </h1>
     <p class="lede">Read books one word at a time, with the sentence running beside it. Everything stays on this device.</p>
     <div class="actions">
-      <button class="primary" onclick={() => fileInput.click()}><Icon svg={icons.import} /> Import a book</button>
-      <button class="secondary" onclick={() => (pasteOpen = !pasteOpen)} aria-expanded={pasteOpen}><Icon svg={icons.paste} /> Paste text</button>
+      <button class="primary" onclick={() => fileInput.click()} disabled={!!busy}><Icon svg={icons.import} /> Import a book</button>
+      <button class="secondary" onclick={() => (form = form === 'paste' ? null : 'paste')} aria-expanded={form === 'paste'}>
+        <Icon svg={icons.paste} /> Paste text
+      </button>
+      <button class="secondary" onclick={() => (form = form === 'link' ? null : 'link')} aria-expanded={form === 'link'}>
+        <Icon svg={icons.link} /> From a link
+      </button>
       <input bind:this={fileInput} type="file" accept={ACCEPT} multiple hidden onchange={(e) => e.currentTarget.files && importFiles(e.currentTarget.files)} />
     </div>
-    <p class="formats">PDF, EPUB, Markdown and plain text.</p>
+    <p class="formats">PDF, EPUB, Markdown and plain text, or a link to one or to any web page.</p>
   </header>
 
   {#if app.updateReady}
@@ -133,7 +184,39 @@
     </div>
   {/if}
 
-  {#if pasteOpen}
+  {#if form === 'link'}
+    <form
+      transition:fade={{ duration: t(200), easing: ease }}
+      class="paste"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void importLink();
+      }}
+    >
+      <!-- plain text, not type=url: that would refuse an address typed without http:// or https:// -->
+      <input
+        type="text"
+        inputmode="url"
+        autocapitalize="off"
+        autocomplete="off"
+        spellcheck="false"
+        enterkeyhint="go"
+        aria-label="Web address"
+        placeholder="example.com/book.pdf"
+        bind:value={link}
+      />
+      <p class="hint">
+        A PDF, an EPUB, a text file or an article. Sites that block direct downloads are read through the r.jina.ai reader service, which then
+        sees the address.
+      </p>
+      <div class="paste-actions">
+        <button type="button" class="secondary" onclick={() => (form = null)}>Cancel</button>
+        <button type="submit" class="primary" disabled={!link.trim() || !!busy}>Import</button>
+      </div>
+    </form>
+  {/if}
+
+  {#if form === 'paste'}
     <form
       transition:fade={{ duration: t(200), easing: ease }}
       class="paste"
@@ -145,7 +228,7 @@
       <input type="text" placeholder="Title (optional)" bind:value={pasteTitle} />
       <textarea placeholder="Paste an article, a chapter or notes" rows="7" bind:value={pasteText}></textarea>
       <div class="paste-actions">
-        <button type="button" class="secondary" onclick={() => (pasteOpen = false)}>Cancel</button>
+        <button type="button" class="secondary" onclick={() => (form = null)}>Cancel</button>
         <button type="submit" class="primary" disabled={!pasteText.trim()}>Save and read</button>
       </div>
     </form>
@@ -153,13 +236,18 @@
 
   {#if busy}
     <div class="busy" role="status" transition:fade={{ duration: t(200), easing: ease }}>
-      <span>Reading “{busy.name}”</span>
-      <span class="meter"><span style:transform="scaleX({busy.progress})"></span></span>
+      <span>{busy.step} “{busy.name}”</span>
+      <span class="meter" class:wait={Number.isNaN(busy.progress)}>
+        <span style:transform={Number.isNaN(busy.progress) ? null : `scaleX(${busy.progress})`}></span>
+      </span>
     </div>
   {/if}
 
   {#if error}
-    <p class="error" role="alert" transition:fade={{ duration: t(200), easing: ease }}>{error}</p>
+    <div class="error" role="alert" transition:fade={{ duration: t(200), easing: ease }}>
+      <p>{error}</p>
+      <button class="secondary" onclick={copyDetails}>{copied ? 'Copied' : 'Copy details'}</button>
+    </div>
   {/if}
 
   {#if app.books.length}
@@ -194,6 +282,7 @@
   {/if}
 
   <footer class="foot">
+    <button class="debug" onclick={() => (app.debugOpen = true)}>Debug info{debug.entries.length ? `, ${debug.entries.length} error${debug.entries.length === 1 ? '' : 's'}` : ''}</button>
     {#if app.offlineReady}
       <span>Works offline</span>
     {:else if 'serviceWorker' in navigator}
@@ -375,9 +464,63 @@
     transition: transform 0.2s linear;
   }
 
+  /* while the size is unknown a short segment runs along the line */
+  .meter.wait span {
+    width: 30%;
+    transition: none;
+    animation: wait 1.4s ease-in-out infinite;
+  }
+
+  @keyframes wait {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(340%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .meter.wait span {
+      width: 100%;
+      opacity: 0.4;
+      animation: none;
+    }
+  }
+
+  .busy > span:first-child {
+    overflow-wrap: anywhere;
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--haze);
+  }
+
   .error {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
     margin: 18px 0 0;
     color: var(--danger);
+  }
+
+  .error p {
+    margin: 0;
+    flex: 1 1 16rem;
+  }
+
+  .debug {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--haze);
+    font-size: 13px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   .books {

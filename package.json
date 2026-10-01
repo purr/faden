@@ -10,7 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "icons": "pwa-assets-generator",
-    "deploy": "npm run build && gh-pages -d dist --dotfiles --nojekyll -m \"chore(pages): deploy build\""
+    "deploy": "npm run build && node scripts/scan-dist.mjs && gh-pages -d dist --dotfiles --nojekyll -m \"chore(pages): deploy build\""
   },
   "dependencies": {
     "@fontsource/atkinson-hyperlegible-mono": "^5.3.0",
